@@ -10,9 +10,9 @@ import (
 	"strings"
 )
 
-// RunScript executes a script and returns its stdout.
-func RunScript(script, workDir string) ([]byte, error) {
-	cmd := exec.Command("bash", "-c", script)
+// RunCandidateSource executes a candidate source command and returns its stdout.
+func RunCandidateSource(source, workDir string) ([]byte, error) {
+	cmd := exec.Command("bash", "-c", source)
 	cmd.Dir = workDir
 
 	var stdout, stderr bytes.Buffer
@@ -20,7 +20,7 @@ func RunScript(script, workDir string) ([]byte, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("script failed: %w\nstderr: %s", err, stderr.String())
+		return nil, fmt.Errorf("candidate source failed: %w\nstderr: %s", err, stderr.String())
 	}
 
 	return stdout.Bytes(), nil

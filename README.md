@@ -1,6 +1,6 @@
 # Task Runner
 
-A Go CLI tool that automates iterative code improvements using Claude AI. It identifies issues via custom scripts, sends them to Claude for fixing, verifies the results, and commits successful improvements.
+A Go CLI tool that automates iterative code improvements using Claude AI. It identifies issues via custom candidate sources, sends them to Claude for fixing, verifies the results, and commits successful improvements.
 
 ## Installation
 
@@ -42,7 +42,7 @@ verify_command: "cargo check"                 # Verify build after fix
 ### task.yaml (Per-Task)
 
 ```yaml
-script: "cargo check 2>&1 | grep error"    # Script to find candidates
+candidate_source: "cargo check 2>&1 | grep error"    # Command to find candidates
 prompt: "Fix this issue: $ARGUMENT"        # Prompt text (or use template)
 template: "template.txt"                   # Load prompt from file instead
 claude_flags: "--fast"                     # Optional Claude CLI flags
@@ -82,10 +82,10 @@ task-runner mytask --odds    # Process candidates with odd MD5 hash
 
 ## How It Works
 
-1. Runs your script to identify **candidates** (issues to fix)
+1. Runs your candidate source to identify **candidates** (issues to fix)
 2. Selects the first unprocessed candidate
 3. Sends candidate details to Claude with your templated prompt
-4. Verifies the fix by re-running the script
+4. Verifies the fix by re-running the candidate source
 5. Commits successful fixes or resets on failure
 6. Repeats until done or limit reached
 

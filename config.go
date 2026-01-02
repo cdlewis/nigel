@@ -19,7 +19,7 @@ type Config struct {
 type Task struct {
 	Name             string // derived from directory name
 	Dir              string // path to task directory
-	Script           string `yaml:"script"`
+	CandidateSource  string `yaml:"candidate_source"`
 	Prompt           string `yaml:"prompt"`
 	Template         string `yaml:"template"`
 	ClaudeFlags      string `yaml:"claude_flags"`
@@ -114,8 +114,8 @@ func loadTasks(runnerDir string) (map[string]Task, error) {
 		task.Name = entry.Name()
 		task.Dir = taskDir
 
-		if task.Script == "" {
-			return nil, fmt.Errorf("task %s missing required field 'script'", entry.Name())
+		if task.CandidateSource == "" {
+			return nil, fmt.Errorf("task %s missing required field 'candidate_source'", entry.Name())
 		}
 		if task.Prompt == "" && task.Template == "" {
 			return nil, fmt.Errorf("task %s must have either 'prompt' or 'template'", entry.Name())

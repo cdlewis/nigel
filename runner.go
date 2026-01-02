@@ -123,11 +123,11 @@ func (r *Runner) Run() error {
 }
 
 func (r *Runner) runIteration() (done bool, err error) {
-	// Run script to get candidates
-	fmt.Println("Running script...")
-	output, err := RunScript(r.task.Script, r.env.ProjectDir)
+	// Run candidate source to get candidates
+	fmt.Println("Running candidate source...")
+	output, err := RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir)
 	if err != nil {
-		return false, fmt.Errorf("script failed: %w", err)
+		return false, fmt.Errorf("candidate source failed: %w", err)
 	}
 
 	candidates, err := ParseCandidates(output)
@@ -179,11 +179,11 @@ func (r *Runner) runIteration() (done bool, err error) {
 		return false, fmt.Errorf("claude failed: %w", err)
 	}
 
-	// Re-run script to check if candidate was fixed
+	// Re-run candidate source to check if candidate was fixed
 	fmt.Println("Re-checking candidates...")
-	output, err = RunScript(r.task.Script, r.env.ProjectDir)
+	output, err = RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir)
 	if err != nil {
-		return false, fmt.Errorf("script re-run failed: %w", err)
+		return false, fmt.Errorf("candidate source re-run failed: %w", err)
 	}
 
 	newCandidates, err := ParseCandidates(output)

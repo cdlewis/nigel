@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// Candidate represents a work item from the script output.
+// Candidate represents a work item from the candidate source output.
 // It can be a single string or an array of strings (first element is the key).
 type Candidate struct {
 	Key      string
@@ -26,7 +26,7 @@ const (
 	HashFilterOdds
 )
 
-// ParseCandidates parses the JSON output from a script.
+// ParseCandidates parses the JSON output from a candidate source.
 // Supports both ["a", "b"] and [["a", "related"], ["b", "related"]] formats.
 func ParseCandidates(jsonData []byte) ([]Candidate, error) {
 	var raw []json.RawMessage
