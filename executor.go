@@ -105,15 +105,17 @@ func shellQuote(s string) string {
 func InterpolatePrompt(template string, candidate *Candidate) string {
 	result := template
 
-	// $ARGUMENT is the first element (same as $ARGUMENT_1)
-	if len(candidate.Elements) > 0 {
-		result = strings.ReplaceAll(result, "$ARGUMENT", candidate.Elements[0])
-	}
-
 	// $ARGUMENT_N for each element (1-indexed)
+	// Must be replaced BEFORE $ARGUMENT to avoid partial matches
 	for i, elem := range candidate.Elements {
 		placeholder := fmt.Sprintf("$ARGUMENT_%d", i+1)
 		result = strings.ReplaceAll(result, placeholder, elem)
+	}
+
+	// $ARGUMENT is the first element (same as $ARGUMENT_1)
+	// Replaced after $ARGUMENT_N to avoid corrupting $ARGUMENT_1, $ARGUMENT_2, etc.
+	if len(candidate.Elements) > 0 {
+		result = strings.ReplaceAll(result, "$ARGUMENT", candidate.Elements[0])
 	}
 
 	// $REMAINING_ARGUMENTS is elements 2+ joined by comma
