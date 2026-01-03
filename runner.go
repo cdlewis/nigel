@@ -138,6 +138,15 @@ func (r *Runner) runIteration() (done bool, err error) {
 	// Filter by hash if requested
 	candidates = FilterByHash(candidates, r.opts.HashFilter)
 
+	// Count ignored candidates
+	ignoredCount := 0
+	for _, c := range candidates {
+		if r.ignoredList.Contains(c.Key) {
+			ignoredCount++
+		}
+	}
+	fmt.Printf("Found %d candidates (%d ignored)\n", len(candidates), ignoredCount)
+
 	// Select first non-ignored candidate
 	candidate := SelectCandidate(candidates, r.ignoredList)
 	if candidate == nil {
