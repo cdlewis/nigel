@@ -5,9 +5,38 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
+
+const (
+	baseBackoff      = 5 * time.Minute
+	maxBackoff       = 1 * time.Hour
+	rateLimitBackoff = 1 * time.Hour
+	rateLimitPhrase  = "You've hit your limit"
+)
+
+// rateLimitError indicates Claude returned a rate limit message
+type rateLimitError struct {
+	msg string
+}
+
+func (e *rateLimitError) Error() string {
+	return e.msg
+}
+
+// calculateBackoff returns the backoff duration for the given level
+func calculateBackoff(level int) time.Duration {
+	backoff := baseBackoff
+	for i := 0; i < level; i++ {
+		backoff *= 2
+		if backoff >= maxBackoff {
+			return maxBackoff
+		}
+	}
+	return backoff
+}
 
 type RunnerOptions struct {
 	Limit      int
@@ -17,13 +46,13 @@ type RunnerOptions struct {
 }
 
 type Runner struct {
-	env              *Environment
-	task             Task
-	opts             RunnerOptions
-	ignoredList      *IgnoredList
-	claudeLogger     *ClaudeLogger
-	stopRequested    bool
-	consecutiveFails int
+	env           *Environment
+	task          Task
+	opts          RunnerOptions
+	ignoredList   *IgnoredList
+	claudeLogger  *ClaudeLogger
+	stopRequested bool
+	backoffLevel  int
 }
 
 func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, error) {
@@ -97,12 +126,18 @@ func (r *Runner) Run() error {
 		done, err := r.runIteration()
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
-			r.consecutiveFails++
 
-			if r.consecutiveFails >= 3 {
-				fmt.Println("3 consecutive failures, sleeping for 5 minutes...")
-				time.Sleep(5 * time.Minute)
-				r.consecutiveFails = 0
+			// Check if it's a rate limit error
+			if _, isRateLimit := err.(*rateLimitError); isRateLimit {
+				fmt.Printf("Rate limit hit, sleeping for %s...\n", rateLimitBackoff)
+				time.Sleep(rateLimitBackoff)
+				r.backoffLevel = 0
+			} else {
+				// Exponential backoff for other errors
+				backoff := calculateBackoff(r.backoffLevel)
+				fmt.Printf("Sleeping for %s (backoff level %d)...\n", backoff, r.backoffLevel)
+				time.Sleep(backoff)
+				r.backoffLevel++
 			}
 			continue
 		}
@@ -112,7 +147,7 @@ func (r *Runner) Run() error {
 			break
 		}
 
-		r.consecutiveFails = 0
+		r.backoffLevel = 0
 	}
 
 	if r.claudeLogger != nil {
@@ -178,10 +213,15 @@ func (r *Runner) runIteration() (done bool, err error) {
 	}
 
 	claudeFlags := r.task.ClaudeFlags
-	err = RunClaudeCommand(r.env.Config.ClaudeCommand, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger)
+	claudeOutput, err := RunClaudeCommand(r.env.Config.ClaudeCommand, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger)
 
 	if r.claudeLogger != nil {
 		r.claudeLogger.EndEntry()
+	}
+
+	// Check for rate limit in output
+	if strings.Contains(claudeOutput, rateLimitPhrase) {
+		return false, &rateLimitError{msg: "claude rate limit hit"}
 	}
 
 	if err != nil {

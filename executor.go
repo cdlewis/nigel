@@ -59,7 +59,8 @@ func RunCommandSilent(command, workDir string) (bool, error) {
 }
 
 // RunClaudeCommand executes the Claude command with prompt, streaming output to both stdout and a log writer.
-func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter io.Writer) error {
+// Returns the captured output (for rate limit detection) and any error.
+func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter io.Writer) (string, error) {
 	// Build the command
 	args := []string{"-c"}
 
@@ -78,20 +79,24 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 	cmd := exec.Command("bash", args...)
 	cmd.Dir = workDir
 
-	// Create a multi-writer to tee output to both stdout and the log
+	// Buffer to capture output for rate limit detection
+	var outputBuf bytes.Buffer
+
+	// Create a multi-writer to tee output to stdout, log, and capture buffer
 	var multiOut, multiErr io.Writer
 	if logWriter != nil {
-		multiOut = io.MultiWriter(os.Stdout, logWriter)
-		multiErr = io.MultiWriter(os.Stderr, logWriter)
+		multiOut = io.MultiWriter(os.Stdout, logWriter, &outputBuf)
+		multiErr = io.MultiWriter(os.Stderr, logWriter, &outputBuf)
 	} else {
-		multiOut = os.Stdout
-		multiErr = os.Stderr
+		multiOut = io.MultiWriter(os.Stdout, &outputBuf)
+		multiErr = io.MultiWriter(os.Stderr, &outputBuf)
 	}
 
 	cmd.Stdout = multiOut
 	cmd.Stderr = multiErr
 
-	return cmd.Run()
+	err := cmd.Run()
+	return outputBuf.String(), err
 }
 
 // shellQuote returns a shell-safe quoted string.
