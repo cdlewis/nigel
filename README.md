@@ -24,7 +24,7 @@ A task is only considered successful if the candidate disappears from the source
 ## Installation
 
 ```bash
-go build -o bin/nigel
+go build -o bin/nigel ./src
 ```
 
 Then add the bin directory to your path:

@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build the binary
-go build -o bin/nigel
+go build -o bin/nigel ./src
 
-# Run tests (none currently exist)
-go test ./...
+# Run tests
+go test ./src/...
 
 # Run the tool
 bin/nigel <task-name>
@@ -24,12 +24,12 @@ Nigel is a CLI tool that automates iterative code improvements using Claude AI. 
 
 ### Core Components
 
-- **main.go** - CLI entry point with flag parsing. Reorders args so flags can appear after positional arguments.
-- **config.go** - Loads configuration from `nigel/config.yaml` (global settings) and `nigel/<task>/task.yaml` (per-task). Also supports `task-runner/` for backwards compatibility. Contains `Environment` struct that holds all runtime config.
-- **runner.go** - Main execution loop (`Runner.Run`). Handles iterations, graceful shutdown (SIGQUIT), and consecutive failure backoff (3 failures → 5 min sleep).
-- **executor.go** - Shell command execution, prompt interpolation, and Claude invocation. Streams Claude output to both stdout and log file.
-- **candidate.go** - Parses JSON output from candidate sources into candidates. Supports both string and array formats. Manages ignored list (processed candidates) and hash-based filtering for parallel runners.
-- **logger.go** - Logs Claude interactions to `claude.log` with timestamps.
+- **src/main.go** - CLI entry point with flag parsing. Reorders args so flags can appear after positional arguments.
+- **src/config.go** - Loads configuration from `nigel/config.yaml` (global settings) and `nigel/<task>/task.yaml` (per-task). Also supports `task-runner/` for backwards compatibility. Contains `Environment` struct that holds all runtime config.
+- **src/runner.go** - Main execution loop (`Runner.Run`). Handles iterations, graceful shutdown (SIGQUIT), and consecutive failure backoff (3 failures → 5 min sleep).
+- **src/executor.go** - Shell command execution, prompt interpolation, and Claude invocation. Streams Claude output to both stdout and log file.
+- **src/candidate.go** - Parses JSON output from candidate sources into candidates. Supports both string and array formats. Manages ignored list (processed candidates) and hash-based filtering for parallel runners.
+- **src/logger.go** - Logs Claude interactions to `claude.log` with timestamps.
 
 ### Execution Flow
 
