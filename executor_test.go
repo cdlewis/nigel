@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -160,4 +162,80 @@ func TestInterpolateCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunCommandShowOnFail(t *testing.T) {
+	// Helper to capture stdout/stderr
+	captureOutput := func(fn func()) (stdout, stderr string) {
+		oldStdout := os.Stdout
+		oldStderr := os.Stderr
+		defer func() {
+			os.Stdout = oldStdout
+			os.Stderr = oldStderr
+		}()
+
+		rOut, wOut, _ := os.Pipe()
+		rErr, wErr, _ := os.Pipe()
+		os.Stdout = wOut
+		os.Stderr = wErr
+
+		fn()
+
+		wOut.Close()
+		wErr.Close()
+
+		var bufOut, bufErr bytes.Buffer
+		bufOut.ReadFrom(rOut)
+		bufErr.ReadFrom(rErr)
+
+		return bufOut.String(), bufErr.String()
+	}
+
+	t.Run("success suppresses output", func(t *testing.T) {
+		stdout, stderr := captureOutput(func() {
+			ok, err := RunCommandShowOnFail("echo hello", ".")
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if !ok {
+				t.Error("expected ok=true")
+			}
+		})
+		if stdout != "" {
+			t.Errorf("expected no stdout, got %q", stdout)
+		}
+		if stderr != "" {
+			t.Errorf("expected no stderr, got %q", stderr)
+		}
+	})
+
+	t.Run("failure shows stdout", func(t *testing.T) {
+		stdout, _ := captureOutput(func() {
+			ok, err := RunCommandShowOnFail("echo failure && exit 1", ".")
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if ok {
+				t.Error("expected ok=false")
+			}
+		})
+		if stdout != "failure\n" {
+			t.Errorf("expected stdout 'failure\\n', got %q", stdout)
+		}
+	})
+
+	t.Run("failure shows stderr", func(t *testing.T) {
+		_, stderr := captureOutput(func() {
+			ok, err := RunCommandShowOnFail("echo error >&2 && exit 1", ".")
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if ok {
+				t.Error("expected ok=false")
+			}
+		})
+		if stderr != "error\n" {
+			t.Errorf("expected stderr 'error\\n', got %q", stderr)
+		}
+	})
 }

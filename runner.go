@@ -153,7 +153,6 @@ func (r *Runner) Run() error {
 		}
 
 		if done {
-			fmt.Println("No more candidates.")
 			break
 		}
 
@@ -190,13 +189,20 @@ func (r *Runner) runIteration() (done bool, err error) {
 			ignoredCount++
 		}
 	}
-	fmt.Printf("Found %d candidates (%d ignored)\n", len(candidates)-ignoredCount, ignoredCount)
 
 	// Select first non-ignored candidate
 	candidate := SelectCandidate(candidates, r.ignoredList)
 	if candidate == nil {
+		remaining := len(candidates) - ignoredCount
+		if remaining == 0 && ignoredCount > 0 {
+			fmt.Printf("No more candidates (%d ignored)\n", ignoredCount)
+		} else {
+			fmt.Println("No more candidates.")
+		}
 		return true, nil
 	}
+
+	fmt.Printf("Found %d candidates (%d ignored)\n", len(candidates)-ignoredCount, ignoredCount)
 
 	fmt.Printf("Selected: %s\n", candidate.Key)
 
