@@ -117,8 +117,8 @@ func (p *ProgressTimer) Stop() time.Duration {
 	duration := time.Since(p.startTime)
 	p.stats.Add(duration)
 
-	// Clear the line and show cursor
-	fmt.Fprintf(os.Stdout, "\r\033[K\033[?25h")
+	// Show cursor and move to new line (keep timer text visible)
+	fmt.Fprintf(os.Stdout, "\033[?25h\n")
 
 	return duration
 }

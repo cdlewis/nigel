@@ -235,6 +235,11 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	timer.Stop()
 
+	// Display Claude's output now that timer is stopped
+	if claudeOutput != "" {
+		fmt.Print(claudeOutput)
+	}
+
 	if r.claudeLogger != nil {
 		r.claudeLogger.EndEntry()
 	}

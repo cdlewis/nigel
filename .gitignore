@@ -1,3 +1,4 @@
 bin
 .claude/settings.local.json
 *.log
+test-environment/.fixed-item*

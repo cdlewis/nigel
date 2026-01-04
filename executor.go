@@ -124,21 +124,17 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 		Pdeathsig: syscall.SIGTERM,
 	}
 
-	// Buffer to capture output for rate limit detection
+	// Buffer to capture output (displayed after timer stops)
 	var outputBuf bytes.Buffer
 
-	// Create a multi-writer to tee output to stdout, log, and capture buffer
-	var multiOut, multiErr io.Writer
+	// Write to log and capture buffer, but not stdout (displayed later)
 	if logWriter != nil {
-		multiOut = io.MultiWriter(os.Stdout, logWriter, &outputBuf)
-		multiErr = io.MultiWriter(os.Stderr, logWriter, &outputBuf)
+		cmd.Stdout = io.MultiWriter(logWriter, &outputBuf)
+		cmd.Stderr = io.MultiWriter(logWriter, &outputBuf)
 	} else {
-		multiOut = io.MultiWriter(os.Stdout, &outputBuf)
-		multiErr = io.MultiWriter(os.Stderr, &outputBuf)
+		cmd.Stdout = &outputBuf
+		cmd.Stderr = &outputBuf
 	}
-
-	cmd.Stdout = multiOut
-	cmd.Stderr = multiErr
 
 	// Start the process and track it for signal forwarding
 	if err := cmd.Start(); err != nil {
