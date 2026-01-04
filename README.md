@@ -16,7 +16,7 @@ export PATH="$PATH:/your/path/to/nigel/bin"
 
 ## Quick Start
 
-1. Create a `nigel/` directory in your project root (or `task-runner/` for backwards compatibility)
+1. Create a `nigel/` directory in your project root
 2. Add a `config.yaml` with global settings
 3. Create task directories with `task.yaml` files
 4. Run: `nigel <task-name>`
