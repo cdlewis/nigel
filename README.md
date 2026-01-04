@@ -6,15 +6,15 @@ Nigel was developed as part of my work on the [Snowboard Kids 2 Decompilation](h
 
 ## How It Works
 
-1. Runs your **candidate source** to identify issues to fix
+1. Runs your **candidate source** to identify tasks to run
 2. Selects the first unprocessed candidate
 3. Sends candidate details to Claude with your templated prompt
 4. Runs your **verify command** (e.g. `cargo check`)
 5. Checks if the candidate is still present in the source
-6. Commits successful fixes or resets on failure
+6. Commits successful tasks or resets the project on failure
 7. Repeats until done or limit reached
 
-A fix is only considered successful if the candidate disappears from the source. This can be relaxed with `accept_best_effort: true` if you want to keep partial improvements.
+A task is only considered successful if the candidate disappears from the source. This can be relaxed with `accept_best_effort: true` if you want to keep partial improvements.
 
 ## Requirements
 
