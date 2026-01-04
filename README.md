@@ -1,6 +1,6 @@
-# Task Runner
+<img src="nigel.png" width="500">
 
-A Go CLI tool that automates iterative code improvements using Claude AI. It identifies issues via custom candidate sources, sends them to Claude for fixing, verifies the results, and commits successful improvements.
+Task Runner is a CLI tool that automates iterative code improvements using Claude AI. It identifies issues via custom candidate sources, sends them to Claude for fixing, verifies the results, and commits successful improvements.
 
 ## Installation
 
