@@ -164,7 +164,6 @@ func StartupBanner(taskName, logPath, mode string) string {
 	}
 
 	var result strings.Builder
-	result.WriteString("\n")
 
 	for i, line := range cat {
 		result.WriteString(colorCyan)

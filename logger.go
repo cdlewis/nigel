@@ -86,5 +86,5 @@ func formatDuration(d time.Duration) string {
 	}
 	minutes := int(d.Minutes())
 	seconds := int(d.Seconds()) % 60
-	return fmt.Sprintf("%dm%02ds", minutes, seconds)
+	return fmt.Sprintf("%dm %02ds", minutes, seconds)
 }
