@@ -14,6 +14,7 @@ const (
 	colorBlue    = "\033[34m"
 	colorMagenta = "\033[35m"
 	colorCyan    = "\033[36m"
+	colorDim     = "\033[90m" // grey (bright black)
 	colorBold    = "\033[1m"
 )
 
@@ -50,6 +51,11 @@ func ColorInfo(text string) string {
 // ColorBold returns bold text
 func ColorBold(text string) string {
 	return colorBold + text + colorReset
+}
+
+// ColorDim returns dim grey text
+func ColorDim(text string) string {
+	return colorDim + text + colorReset
 }
 
 // Gradient applies a rainbow gradient to text

@@ -1,3 +1,3 @@
-nigel
 bin
 .claude/settings.local.json
+*.log

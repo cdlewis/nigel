@@ -51,6 +51,7 @@ type Runner struct {
 	opts          RunnerOptions
 	ignoredList   *IgnoredList
 	claudeLogger  *ClaudeLogger
+	claudeStats   *SessionStats
 	stopRequested bool
 	backoffLevel  int
 }
@@ -80,6 +81,7 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 		opts:         opts,
 		ignoredList:  ignoredList,
 		claudeLogger: claudeLogger,
+		claudeStats:  NewSessionStats(),
 	}, nil
 }
 
@@ -207,14 +209,18 @@ func (r *Runner) runIteration() (done bool, err error) {
 		return true, nil
 	}
 
-	// Run Claude
-	fmt.Println(ColorInfo("Running Claude..."))
+	// Run Claude with progress timer
+	timer := NewProgressTimer("Running Claude...", r.claudeStats)
+	timer.Start()
+
 	if r.claudeLogger != nil {
 		r.claudeLogger.StartEntry(prompt)
 	}
 
 	claudeFlags := r.task.ClaudeFlags
 	claudeOutput, err := RunClaudeCommand(r.env.Config.ClaudeCommand, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger)
+
+	timer.Stop()
 
 	if r.claudeLogger != nil {
 		r.claudeLogger.EndEntry()

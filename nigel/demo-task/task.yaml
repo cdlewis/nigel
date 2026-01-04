@@ -1,0 +1,20 @@
+candidate_source: |
+  # Output candidates that haven't been fixed yet
+  candidates='["item-1", "item-2", "item-3"]'
+  result='['
+  first=true
+  for item in item-1 item-2 item-3; do
+    if [[ ! -f ".fixed-${item}" ]]; then
+      if $first; then
+        first=false
+      else
+        result+=','
+      fi
+      result+="\"${item}\""
+    fi
+  done
+  result+=']'
+  echo "$result"
+
+prompt: |
+  Fix the issue: $INPUT
