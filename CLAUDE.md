@@ -6,16 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build the binary
-go build
+go build -o bin/nigel
 
 # Run tests (none currently exist)
 go test ./...
 
 # Run the tool
-./nigel <task-name>
+bin/nigel <task-name>
 
 # List available tasks
-./nigel --list
+bin/nigel --list
 ```
 
 ## Architecture

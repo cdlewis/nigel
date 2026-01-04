@@ -1,4 +1,4 @@
-claude_command: ./nigel/mock-claude
+claude_command: ./mock-claude
 success_command: "echo 'Committed fix for: $CANDIDATE'"
 reset_command: "rm -f .fixed-*"
 verify_command: "true"
