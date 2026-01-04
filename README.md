@@ -37,20 +37,24 @@ project-root/
 ### config.yaml (Global)
 
 ```yaml
-claude_command: "claude"                      # Path to Claude CLI
-success_command: "git commit -m 'Fix: $CANDIDATE'"  # Run on successful fix
-reset_command: "git reset --hard"             # Reset changes on failure
-verify_command: "cargo check"                 # Verify build after fix
+# Path to Claude CLI, you can find this by running `claude doctor`
+claude_command: "~/.claude/local/node_modules/.bin/claude"
+# Run on successful fix (candidate no longer returned from candidate source)
+success_command: "git commit -m 'Fix: $CANDIDATE'"
+# Reset changes on failure (candidate still present)
+reset_command: "git reset --hard"
+# Verify build after fix, such as by linting or running unit tests
+verify_command: "cargo check"
 ```
 
 ### task.yaml (Per-Task)
 
 ```yaml
-candidate_source: "cargo check 2>&1 | grep error"    # Command to find candidates
-prompt: "Fix this issue: $INPUT"          # Prompt text (or use template)
-template: "template.txt"                   # Load prompt from file instead
-claude_flags: "--fast"                     # Optional Claude CLI flags
-accept_best_effort: false                  # Accept partial fixes
+candidate_source: "cargo check 2>&1 | grep error" # Command to find candidates
+prompt: "Fix this issue: $INPUT" # Prompt text (or use template)
+template: "template.txt" # Load prompt from file instead
+claude_flags: "--fast" # Optional Claude CLI flags
+accept_best_effort: false # Accept partial fixes
 ```
 
 ## Usage
@@ -75,14 +79,14 @@ task-runner mytask --odds    # Process candidates with odd MD5 hash
 
 ### CLI Flags
 
-| Flag | Description |
-|------|-------------|
-| `--list` | List all available tasks |
-| `--limit N` | Maximum iterations (0 = unlimited) |
+| Flag        | Description                            |
+| ----------- | -------------------------------------- |
+| `--list`    | List all available tasks               |
+| `--limit N` | Maximum iterations (0 = unlimited)     |
 | `--dry-run` | Print prompts without executing Claude |
-| `--verbose` | Print full prompt content |
-| `--evens` | Only process candidates with even hash |
-| `--odds` | Only process candidates with odd hash |
+| `--verbose` | Print full prompt content              |
+| `--evens`   | Only process candidates with even hash |
+| `--odds`    | Only process candidates with odd hash  |
 
 ## How It Works
 
@@ -102,20 +106,22 @@ task-runner mytask --odds    # Process candidates with odd MD5 hash
 
 Templates support `$INPUT` variable interpolation for accessing candidate data:
 
-| Syntax | Description | Example |
-|--------|-------------|---------|
-| `$INPUT` | Whole input (single items unwrapped) | `"file.go"` or `["a","b"]` |
-| `$INPUT[0]` | Array index (0-based) | First element |
-| `$INPUT[1]` | Array index | Second element |
-| `$INPUT[1:]` | Slice from index to end | `["b","c","d"]` |
-| `$INPUT["key"]` | Map key lookup | Value for key |
+| Syntax          | Description                          | Example                    |
+| --------------- | ------------------------------------ | -------------------------- |
+| `$INPUT`        | Whole input (single items unwrapped) | `"file.go"` or `["a","b"]` |
+| `$INPUT[0]`     | Array index (0-based)                | First element              |
+| `$INPUT[1]`     | Array index                          | Second element             |
+| `$INPUT[1:]`    | Slice from index to end              | `["b","c","d"]`            |
+| `$INPUT["key"]` | Map key lookup                       | Value for key              |
 
 **Special cases:**
+
 - Single-item arrays are unwrapped: `$INPUT` on `["x"]` returns `"x"`
 - Out of bounds index returns empty string
 - Missing map key returns empty string
 
 **In commands** (success_command, etc.):
+
 - `$CANDIDATE` - Full candidate key (JSON serialization)
 - `$TASK_NAME` - Current task name
 
@@ -124,25 +130,34 @@ Templates support `$INPUT` variable interpolation for accessing candidate data:
 Candidate sources must output JSON. Each candidate can be:
 
 **Strings** (simple case):
+
 ```json
 ["file1.go", "file2.go", "file3.go"]
 ```
 
 **Arrays** (multiple values per candidate):
+
 ```json
-[["file.go", "10", "error message"], ["other.go", "20", "warning"]]
+[
+  ["file.go", "10", "error message"],
+  ["other.go", "20", "warning"]
+]
 ```
+
 Access with `$INPUT[0]`, `$INPUT[1]`, `$INPUT[1:]`
 
 **Maps** (named fields):
+
 ```json
-[{"file": "test.go", "line": 10, "type": "error"}]
+[{ "file": "test.go", "line": 10, "type": "error" }]
 ```
+
 Access with `$INPUT["file"]`, `$INPUT["line"]`
 
 ### Candidate Keys
 
 Each candidate has a unique key used for tracking in `ignored.log`:
+
 - **Strings**: The string itself (`file.go`)
 - **Arrays**: JSON serialization (`["file.go","10"]`)
 - **Maps**: JSON serialization (`{"file":"test.go","line":10}`)
