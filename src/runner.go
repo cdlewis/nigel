@@ -40,6 +40,7 @@ func calculateBackoff(level int) time.Duration {
 
 type RunnerOptions struct {
 	Limit      int
+	TimeLimit  time.Duration
 	DryRun     bool
 	Verbose    bool
 	HashFilter HashFilter
@@ -118,6 +119,7 @@ func (r *Runner) Run() error {
 	}
 	fmt.Print(StartupBanner(r.task.Name, logPath, r.modeString()))
 
+	startTime := time.Now()
 	iteration := 0
 	for {
 		if r.stopRequested {
@@ -127,6 +129,11 @@ func (r *Runner) Run() error {
 
 		if r.opts.Limit > 0 && iteration >= r.opts.Limit {
 			fmt.Printf("Reached iteration limit (%d).\n", r.opts.Limit)
+			break
+		}
+
+		if r.opts.TimeLimit > 0 && time.Since(startTime) >= r.opts.TimeLimit {
+			fmt.Printf("Reached time limit (%s).\n", r.opts.TimeLimit)
 			break
 		}
 

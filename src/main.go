@@ -6,12 +6,14 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 )
 
 func main() {
 	// Define flags
 	listFlag := flag.Bool("list", false, "List available tasks")
 	limitFlag := flag.Int("limit", 0, "Maximum number of iterations (0 = unlimited)")
+	timeLimitFlag := flag.Duration("time-limit", 0*time.Second, "Maximum duration (e.g. 1h30m, 30m, 5s) (0 = unlimited)")
 	dryRunFlag := flag.Bool("dry-run", false, "Print prompt without executing Claude")
 	verboseFlag := flag.Bool("verbose", false, "Print verbose output")
 	evensFlag := flag.Bool("evens", false, "Only process candidates with even MD5 hash")
@@ -68,6 +70,7 @@ func main() {
 	// Create and run the runner
 	opts := RunnerOptions{
 		Limit:      *limitFlag,
+		TimeLimit:  *timeLimitFlag,
 		DryRun:     *dryRunFlag,
 		Verbose:    *verboseFlag,
 		HashFilter: hashFilter,
@@ -122,7 +125,7 @@ func reorderArgs(args []string) []string {
 			// Check if this flag takes a value (like -limit 5)
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 				// Check if it's a flag that takes a value
-				if arg == "-limit" || arg == "--limit" {
+				if arg == "-limit" || arg == "--limit" || arg == "-time-limit" || arg == "--time-limit" {
 					i++
 					flags = append(flags, args[i])
 				}
