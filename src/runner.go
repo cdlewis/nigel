@@ -181,6 +181,10 @@ func (r *Runner) runIteration() (done bool, err error) {
 		return false, fmt.Errorf("candidate source failed: %w", err)
 	}
 
+	if r.opts.Verbose {
+		fmt.Printf(ColorInfo("Candidate source output:\n%s\n"), output)
+	}
+
 	candidates, err := ParseCandidates(output)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse candidates: %w", err)
@@ -188,6 +192,13 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	// Filter by hash if requested
 	candidates = FilterByHash(candidates, r.opts.HashFilter)
+
+	if r.opts.Verbose {
+		fmt.Printf(ColorInfo("Parsed candidates (%d total):\n"), len(candidates))
+		for _, c := range candidates {
+			fmt.Printf("  - %s\n", c.Key)
+		}
+	}
 
 	// Count ignored candidates
 	ignoredCount := 0
@@ -267,6 +278,10 @@ func (r *Runner) runIteration() (done bool, err error) {
 		return false, fmt.Errorf("candidate source re-run failed: %w", err)
 	}
 
+	if r.opts.Verbose {
+		fmt.Printf(ColorInfo("Re-check candidate source output:\n%s\n"), output)
+	}
+
 	newCandidates, err := ParseCandidates(output)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse new candidates: %w", err)
@@ -274,6 +289,15 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	// Apply the same hash filter for consistent verification
 	newCandidates = FilterByHash(newCandidates, r.opts.HashFilter)
+
+	if r.opts.Verbose {
+		fmt.Printf(ColorInfo("Re-check parsed candidates (%d total):\n"), len(newCandidates))
+		for _, c := range newCandidates {
+			fmt.Printf("  - %s\n", c.Key)
+		}
+		fmt.Printf(ColorInfo("Looking for candidate: %s\n"), candidate.Key)
+		fmt.Printf(ColorInfo("Candidate found: %v\n"), containsKey(newCandidates, candidate.Key))
+	}
 
 	candidateFixed := !containsKey(newCandidates, candidate.Key)
 
