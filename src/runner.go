@@ -271,7 +271,16 @@ func (r *Runner) runIteration() (done bool, err error) {
 		return false, fmt.Errorf("claude failed: %w", err)
 	}
 
-	// Re-run candidate source to check if candidate was fixed
+	// Verify build FIRST before checking candidate presence
+	// Invalid changes can cause candidates to be excluded from source,
+	// creating false positives if we check presence before build
+	fmt.Println(ColorInfo("Verifying build..."))
+	if !r.runVerify() {
+		fmt.Println(ColorWarning("Build failed after Claude changes"))
+		return r.handleFailure(candidate)
+	}
+
+	// Build passed - now check if candidate was fixed
 	fmt.Println(ColorInfo("Re-checking candidates..."))
 	output, err = RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir)
 	if err != nil {
@@ -302,17 +311,17 @@ func (r *Runner) runIteration() (done bool, err error) {
 	candidateFixed := !containsKey(newCandidates, candidate.Key)
 
 	if candidateFixed {
-		return r.handleSuccess(candidate)
+		return r.handleSuccess(candidate, true)  // Build already verified
 	} else {
 		return r.handleFailure(candidate)
 	}
 }
 
-func (r *Runner) handleSuccess(candidate *Candidate) (bool, error) {
+func (r *Runner) handleSuccess(candidate *Candidate, buildVerified bool) (bool, error) {
 	fmt.Println(ColorSuccess(fmt.Sprintf("✓ Candidate %s was fixed!", candidate.Key)))
 
-	// Verify build
-	if !r.runVerify() {
+	// Verify build (unless already verified)
+	if !buildVerified && !r.runVerify() {
 		fmt.Println(ColorWarning("Build verification failed after fix, attempting recovery..."))
 		if !r.runReset() {
 			return false, fmt.Errorf("failed to reset after build failure")
