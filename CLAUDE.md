@@ -42,3 +42,24 @@ Nigel is a CLI tool that automates iterative code improvements using Claude AI. 
 
 Prompts support: `$ARGUMENT`, `$ARGUMENT_1`, `$ARGUMENT_2`, `$REMAINING_ARGUMENTS`
 Commands support: `$CANDIDATE`, `$TASK_NAME`
+
+## Test Environment
+
+A `test-environment/` directory exists for integration testing:
+
+```bash
+cd test-environment
+../bin/nigel demo-task
+```
+
+The test environment uses `mock-claude`, a bash script that simulates Claude's behavior:
+
+- Accepts `-p` flag for prompts (like real Claude)
+- Configurable via `MOCK_CLAUDE_DELAY` (default: 3s) and `MOCK_CLAUDE_FIX` (0/1)
+- Creates `.fixed-$CANDIDATE` files when `MOCK_CLAUDE_FIX=1`
+- Outputs mock responses for testing iteration flow
+
+To reset state between runs:
+```bash
+rm nigel/demo-task/*.log .fixed-*
+```
