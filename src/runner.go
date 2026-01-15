@@ -249,7 +249,14 @@ func (r *Runner) runIteration() (done bool, err error) {
 	}
 
 	claudeFlags := r.task.ClaudeFlags
-	claudeOutput, err := RunClaudeCommand(r.env.Config.ClaudeCommand, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger)
+
+	// Use task-level claude_command if set, otherwise fall back to global
+	claudeCmd := r.task.ClaudeCommand
+	if claudeCmd == "" {
+		claudeCmd = r.env.Config.ClaudeCommand
+	}
+
+	claudeOutput, err := RunClaudeCommand(claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger)
 
 	timer.Stop()
 

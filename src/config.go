@@ -23,6 +23,7 @@ type Task struct {
 	Prompt           string `yaml:"prompt"`
 	Template         string `yaml:"template"`
 	ClaudeFlags      string `yaml:"claude_flags"`
+	ClaudeCommand    string `yaml:"claude_command"`
 	AcceptBestEffort bool   `yaml:"accept_best_effort"`
 }
 
@@ -117,6 +118,9 @@ func loadTasks(runnerDir string) (map[string]Task, error) {
 
 		task.Name = entry.Name()
 		task.Dir = taskDir
+
+		// Expand tilde in claude command if present
+		task.ClaudeCommand = expandTilde(task.ClaudeCommand)
 
 		if task.CandidateSource == "" {
 			return nil, fmt.Errorf("task %s missing required field 'candidate_source'", entry.Name())
