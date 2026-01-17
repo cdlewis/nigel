@@ -381,6 +381,50 @@ func TestIgnoredList(t *testing.T) {
 			t.Error("expected func2 to not be ignored in non-repeat mode")
 		}
 	})
+
+	t.Run("SetMaxRepeat persists to file when limit reached", func(t *testing.T) {
+		dir := t.TempDir()
+
+		list, err := NewIgnoredList(dir)
+		if err != nil {
+			t.Fatalf("NewIgnoredList failed: %v", err)
+		}
+
+		list.SetMaxRepeat(3)
+
+		// First two attempts should not write to file
+		list.Add("retryFunc") // attempts = 1
+		list.Add("retryFunc") // attempts = 2
+
+		// Verify file doesn't exist yet
+		_, err = os.Stat(filepath.Join(dir, "ignored.log"))
+		if !os.IsNotExist(err) {
+			t.Error("file should not exist before reaching repeat limit")
+		}
+
+		// Third attempt should write to file
+		list.Add("retryFunc") // attempts = 3
+
+		// Verify file was written
+		content, err := os.ReadFile(filepath.Join(dir, "ignored.log"))
+		if err != nil {
+			t.Fatalf("failed to read ignored.log: %v", err)
+		}
+		if string(content) != "retryFunc\n" {
+			t.Errorf("file content = %q, want %q", string(content), "retryFunc\n")
+		}
+
+		// Verify it persists across reloads
+		list2, err := NewIgnoredList(dir)
+		if err != nil {
+			t.Fatalf("NewIgnoredList failed: %v", err)
+		}
+		list2.SetMaxRepeat(3)
+
+		if !list2.Contains("retryFunc") {
+			t.Error("candidate should be ignored after reload when limit was reached")
+		}
+	})
 }
 
 func TestDeterministicMapKeys(t *testing.T) {

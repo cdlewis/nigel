@@ -365,16 +365,27 @@ func (l *IgnoredList) Add(key string) error {
 	// Increment attempt count
 	l.attempts[key]++
 
-	// In repeat mode, don't write to file
+	// In repeat mode, only write to file when limit is reached
 	if l.maxRepeat > 0 {
+		if l.attempts[key] >= l.maxRepeat {
+			// Hit the repeat limit - persist to file
+			return l.persistKey(key)
+		}
 		return nil
 	}
 
+	// Non-repeat mode - persist immediately
+	return l.persistKey(key)
+}
+
+// persistKey writes a key to the ignored log file and marks it in entries.
+// Command-based lists (no path) are only tracked in memory.
+func (l *IgnoredList) persistKey(key string) error {
 	if l.entries[key] {
 		return nil
 	}
 
-	// Command-based lists have no file path - don't write
+	// Command-based lists have no file path - just mark in memory
 	if l.path == "" {
 		l.entries[key] = true
 		return nil
