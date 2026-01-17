@@ -87,7 +87,7 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 	}
 
 	// Set repeat mode on ignored list
-	ignoredList.maxRepeat = task.Repeat
+	ignoredList.SetMaxRepeat(task.Repeat)
 
 	var claudeLogger *ClaudeLogger
 	if !opts.DryRun {

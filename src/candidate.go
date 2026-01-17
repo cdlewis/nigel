@@ -346,6 +346,21 @@ func (l *IgnoredList) Contains(key string) bool {
 	return l.entries[key]
 }
 
+// SetMaxRepeat sets the max repeat count and adjusts existing entries.
+// When repeat mode is enabled, existing entries (from file) are marked as done
+// so they won't be retried. Only new candidates will get up to N attempts.
+func (l *IgnoredList) SetMaxRepeat(n int) {
+	l.maxRepeat = n
+	if n > 0 {
+		for key := range l.entries {
+			if l.attempts[key] == 1 {
+				// Existing entry from file - mark as already done
+				l.attempts[key] = n
+			}
+		}
+	}
+}
+
 func (l *IgnoredList) Add(key string) error {
 	// Increment attempt count
 	l.attempts[key]++

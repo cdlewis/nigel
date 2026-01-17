@@ -291,6 +291,96 @@ func TestIgnoredList(t *testing.T) {
 			t.Error("new list should not contain any entries")
 		}
 	})
+
+	t.Run("SetMaxRepeat marks existing entries as done", func(t *testing.T) {
+		dir := t.TempDir()
+		// Create ignored.log with some entries
+		err := os.WriteFile(filepath.Join(dir, "ignored.log"), []byte("func1\nfunc2\n"), 0644)
+		if err != nil {
+			t.Fatalf("failed to create ignored.log: %v", err)
+		}
+
+		list, err := NewIgnoredList(dir)
+		if err != nil {
+			t.Fatalf("NewIgnoredList failed: %v", err)
+		}
+
+		// Before SetMaxRepeat, Contains works normally (attempts = 1)
+		if !list.Contains("func1") {
+			t.Error("expected func1 to be ignored before SetMaxRepeat")
+		}
+
+		// Set repeat mode with maxRepeat = 3
+		list.SetMaxRepeat(3)
+
+		// Existing entries should now be considered "done" (attempts = 3)
+		if !list.Contains("func1") {
+			t.Error("expected func1 to be ignored after SetMaxRepeat (existing entry)")
+		}
+		if !list.Contains("func2") {
+			t.Error("expected func2 to be ignored after SetMaxRepeat (existing entry)")
+		}
+		// New entries should not be ignored (attempts = 0)
+		if list.Contains("func3") {
+			t.Error("expected func3 to not be ignored (new entry)")
+		}
+	})
+
+	t.Run("SetMaxRepeat allows retrying new candidates up to N times", func(t *testing.T) {
+		dir := t.TempDir()
+
+		list, err := NewIgnoredList(dir)
+		if err != nil {
+			t.Fatalf("NewIgnoredList failed: %v", err)
+		}
+
+		list.SetMaxRepeat(3)
+
+		// New candidate should not be ignored initially
+		if list.Contains("newFunc") {
+			t.Error("new candidate should not be ignored")
+		}
+
+		// Simulate attempts
+		list.Add("newFunc") // attempts = 1
+		if list.Contains("newFunc") {
+			t.Error("candidate should not be ignored after 1 attempt (max is 3)")
+		}
+
+		list.Add("newFunc") // attempts = 2
+		if list.Contains("newFunc") {
+			t.Error("candidate should not be ignored after 2 attempts (max is 3)")
+		}
+
+		list.Add("newFunc") // attempts = 3
+		if !list.Contains("newFunc") {
+			t.Error("candidate should be ignored after 3 attempts (reached max)")
+		}
+	})
+
+	t.Run("SetMaxRepeat with 0 disables repeat mode", func(t *testing.T) {
+		dir := t.TempDir()
+		err := os.WriteFile(filepath.Join(dir, "ignored.log"), []byte("func1\n"), 0644)
+		if err != nil {
+			t.Fatalf("failed to create ignored.log: %v", err)
+		}
+
+		list, err := NewIgnoredList(dir)
+		if err != nil {
+			t.Fatalf("NewIgnoredList failed: %v", err)
+		}
+
+		// Set maxRepeat to 0 (no repeat mode)
+		list.SetMaxRepeat(0)
+
+		// Should use entries map, not attempts
+		if !list.Contains("func1") {
+			t.Error("expected func1 to be ignored in non-repeat mode")
+		}
+		if list.Contains("func2") {
+			t.Error("expected func2 to not be ignored in non-repeat mode")
+		}
+	})
 }
 
 func TestDeterministicMapKeys(t *testing.T) {
