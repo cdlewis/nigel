@@ -10,8 +10,15 @@ PROMPT=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -p)
-            PROMPT="$2"
-            shift 2
+            # Check if the next arg looks like a flag (starts with -) or is empty
+            # If so, read from stdin (heredoc support)
+            if [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+                PROMPT=$(cat)
+                shift
+            else
+                PROMPT="$2"
+                shift 2
+            fi
             ;;
         *)
             shift

@@ -114,17 +114,14 @@ func KillRunningProcess() {
 // RunClaudeCommand executes the Claude command with prompt, timeout, streaming output to both stdout and a log writer.
 // Returns the captured output (for rate limit detection) and any error.
 func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration) (string, error) {
-	// Build the command
-	args := []string{"-c"}
-
-	// Escape prompt for shell
-	escapedPrompt := shellQuote(prompt)
+	// Build the command using heredoc to avoid shell escaping issues
+	const delimiter = "__NIGEL_PROMPT_EOF__"
 
 	var cmdStr string
 	if claudeFlags != "" {
-		cmdStr = fmt.Sprintf("%s %s -p %s", claudeCmd, claudeFlags, escapedPrompt)
+		cmdStr = fmt.Sprintf("%s %s -p <<'%s'\n%s\n%s", claudeCmd, claudeFlags, delimiter, prompt, delimiter)
 	} else {
-		cmdStr = fmt.Sprintf("%s -p %s", claudeCmd, escapedPrompt)
+		cmdStr = fmt.Sprintf("%s -p <<'%s'\n%s\n%s", claudeCmd, delimiter, prompt, delimiter)
 	}
 
 	// Log the exact command being executed (for debugging hangs)
@@ -132,7 +129,7 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 		fmt.Fprintf(logWriter, "Command: %s\n", cmdStr)
 	}
 
-	args = append(args, cmdStr)
+	args := []string{"-c", cmdStr}
 
 	cmd := exec.Command("bash", args...)
 	cmd.Dir = workDir
@@ -183,12 +180,6 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 	}
 
 	return outputBuf.String(), err
-}
-
-// shellQuote returns a shell-safe quoted string.
-func shellQuote(s string) string {
-	// Use single quotes, escaping any single quotes in the string
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
 // Regex patterns for $INPUT interpolation
