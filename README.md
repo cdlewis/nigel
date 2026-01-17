@@ -123,7 +123,19 @@ template: "template.txt"               # ...load from file
 claude_flags: "--fast"                 # Optional CLI flags
 claude_command: "~/.claude/custom"     # Override global claude_command
 accept_best_effort: false              # Accept partial fixes
+timeout: "5m"                          # Per-candidate timeout (optional)
 ```
+
+**Timeouts**
+
+The `timeout` option limits how long Claude can spend on a single candidate. When timeout is reached, Claude is interrupted and Nigel handles the current work:
+
+- If `accept_best_effort: true` and build passes, commits partial progress
+- Otherwise, resets changes and marks candidate as ignored
+
+Duration format: `30s`, `5m`, `1h`, etc. (Go `time.ParseDuration` format).
+
+This is different from the `--time-limit` CLI flag which applies to the entire task run. Timeout applies per-candidate.
 
 ## Candidate Sources
 

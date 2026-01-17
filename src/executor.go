@@ -10,7 +10,21 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
+
+// timeoutError indicates Claude execution timed out
+type timeoutError struct {
+	duration time.Duration
+}
+
+func (e *timeoutError) Error() string {
+	return fmt.Sprintf("timeout after %s", e.duration)
+}
+
+func (e *timeoutError) IsTimeout() bool {
+	return true
+}
 
 // RunCandidateSource executes a candidate source command and returns its stdout.
 func RunCandidateSource(source, workDir string) ([]byte, error) {
@@ -97,9 +111,9 @@ func KillRunningProcess() {
 	}
 }
 
-// RunClaudeCommand executes the Claude command with prompt, streaming output to both stdout and a log writer.
+// RunClaudeCommand executes the Claude command with prompt, timeout, streaming output to both stdout and a log writer.
 // Returns the captured output (for rate limit detection) and any error.
-func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter io.Writer) (string, error) {
+func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration) (string, error) {
 	// Build the command
 	args := []string{"-c"}
 
@@ -147,8 +161,27 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 	}
 	runningProcess = cmd.Process
 
-	err := cmd.Wait()
-	runningProcess = nil
+	// Wait for completion or timeout
+	var err error
+	if timeout > 0 {
+		done := make(chan error, 1)
+		go func() {
+			done <- cmd.Wait()
+		}()
+
+		select {
+		case <-time.After(timeout):
+			KillRunningProcess()
+			runningProcess = nil
+			return outputBuf.String(), &timeoutError{duration: timeout}
+		case err = <-done:
+			runningProcess = nil
+		}
+	} else {
+		err = cmd.Wait()
+		runningProcess = nil
+	}
+
 	return outputBuf.String(), err
 }
 

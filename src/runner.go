@@ -273,7 +273,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 		fmt.Printf(ColorInfo("Using task-level claude_command: %s\n"), claudeCmd)
 	}
 
-	claudeOutput, err := RunClaudeCommand(claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger)
+	claudeOutput, err := RunClaudeCommand(claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, r.task.Timeout)
 
 	timer.Stop()
 
@@ -289,6 +289,12 @@ func (r *Runner) runIteration() (done bool, err error) {
 	// Check for rate limit in output
 	if strings.Contains(claudeOutput, rateLimitPhrase) {
 		return false, &rateLimitError{msg: "claude rate limit hit"}
+	}
+
+	// Check for timeout
+	if _, isTimeout := err.(*timeoutError); isTimeout {
+		fmt.Println(ColorWarning(fmt.Sprintf("Candidate timeout after %s", r.task.Timeout)))
+		return r.handleTimeout(candidate)
 	}
 
 	if err != nil {
@@ -429,6 +435,57 @@ func (r *Runner) handleFailure(candidate *Candidate) (bool, error) {
 			return false, &fatalError{msg: "failed to reset"}
 		}
 		r.logOutcome(OutcomeNotFixed, "reverted")
+	}
+
+	if err := r.ignoredList.Add(candidate.Key); err != nil {
+		return false, err
+	}
+
+	return false, nil
+}
+
+func (r *Runner) handleTimeout(candidate *Candidate) (bool, error) {
+	fmt.Println(ColorWarning(fmt.Sprintf("Candidate %s timed out", candidate.Key)))
+
+	if r.task.AcceptBestEffort {
+		// Best effort mode: commit if build passes
+		if r.runVerify() {
+			hasChanges, err := HasUncommittedChanges(r.env.ProjectDir)
+			if err != nil {
+				return false, fmt.Errorf("failed to check for changes: %w", err)
+			}
+
+			if hasChanges {
+				fmt.Println(ColorInfo("Committing partial progress after timeout..."))
+				successCmd := InterpolateCommand(r.env.Config.SuccessCommand, candidate, r.task.Name)
+				successCmd = replaceBestEffort(successCmd, candidate.Key)
+				ok, err := RunCommand(successCmd, r.env.ProjectDir)
+				if err != nil {
+					return false, fmt.Errorf("timeout commit error: %w", err)
+				}
+				if !ok {
+					fmt.Println(ColorWarning("Warning: timeout commit returned non-zero exit code"))
+				} else {
+					fmt.Println(ColorSuccess("✓ Changes committed"))
+				}
+				r.logOutcome(OutcomeBestEffort, "timeout - partial progress committed")
+			} else {
+				r.logOutcome(OutcomeNotFixed, "timeout - no changes made")
+			}
+		} else {
+			// Build failed, reset
+			fmt.Println(ColorWarning("Build failed after timeout, resetting..."))
+			if !r.runResetAndVerify() {
+				return false, &fatalError{msg: "failed to reset"}
+			}
+			r.logOutcome(OutcomeBuildFailed, "timeout - reverted")
+		}
+	} else {
+		// Standard mode: reset changes
+		if !r.runResetAndVerify() {
+			return false, &fatalError{msg: "failed to reset"}
+		}
+		r.logOutcome(OutcomeNotFixed, "timeout - reverted")
 	}
 
 	if err := r.ignoredList.Add(candidate.Key); err != nil {

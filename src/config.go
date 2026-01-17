@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -25,7 +26,8 @@ type Task struct {
 	Template         string `yaml:"template"`
 	ClaudeFlags      string `yaml:"claude_flags"`
 	ClaudeCommand    string `yaml:"claude_command"`
-	AcceptBestEffort bool   `yaml:"accept_best_effort"`
+	AcceptBestEffort bool          `yaml:"accept_best_effort"`
+	Timeout          time.Duration `yaml:"timeout"`
 }
 
 type Environment struct {
