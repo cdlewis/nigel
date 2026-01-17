@@ -40,8 +40,10 @@ Nigel is a CLI tool that automates iterative code improvements using Claude AI. 
 
 ### Prompt Variable Interpolation
 
-Prompts support: `$ARGUMENT`, `$ARGUMENT_1`, `$ARGUMENT_2`, `$REMAINING_ARGUMENTS`
+Prompts support: `$INPUT`, `$INPUT[n]`, `$INPUT[n:]`, `$INPUT["key"]`, `$TASK_ID`
 Commands support: `$CANDIDATE`, `$TASK_NAME`
+
+- `$TASK_ID` - A unique random int64 generated per run, useful for tracking or deduplication
 
 ## Test Environment
 

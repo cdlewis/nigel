@@ -195,9 +195,12 @@ var (
 )
 
 // InterpolatePrompt replaces template variables with candidate values.
-// Supports: $INPUT, $INPUT[n], $INPUT[n:], $INPUT["key"]
-func InterpolatePrompt(template string, candidate *Candidate) string {
+// Supports: $INPUT, $INPUT[n], $INPUT[n:], $INPUT["key"], $TASK_ID
+func InterpolatePrompt(template string, candidate *Candidate, taskID int64) string {
 	result := template
+
+	// Replace $TASK_ID - unique task identifier
+	result = strings.ReplaceAll(result, "$TASK_ID", fmt.Sprintf("%d", taskID))
 
 	// Replace $INPUT["key"] - map key access
 	result = inputMapKeyRe.ReplaceAllStringFunc(result, func(match string) string {

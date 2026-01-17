@@ -8,6 +8,8 @@ import (
 )
 
 func TestInterpolatePrompt(t *testing.T) {
+	const testTaskID = 12345
+
 	// Helper to create a candidate from JSON
 	makeCandidate := func(jsonStr string) *Candidate {
 		candidates, _ := ParseCandidates([]byte("[" + jsonStr + "]"))
@@ -16,7 +18,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT with single string", func(t *testing.T) {
 		c := makeCandidate(`"hello"`)
-		result := InterpolatePrompt("Say: $INPUT", c)
+		result := InterpolatePrompt("Say: $INPUT", c, testTaskID)
 		if result != "Say: hello" {
 			t.Errorf("got %q, want %q", result, "Say: hello")
 		}
@@ -24,7 +26,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT with single-item array unwraps", func(t *testing.T) {
 		c := makeCandidate(`["only_item"]`)
-		result := InterpolatePrompt("Value: $INPUT", c)
+		result := InterpolatePrompt("Value: $INPUT", c, testTaskID)
 		if result != "Value: only_item" {
 			t.Errorf("got %q, want %q", result, "Value: only_item")
 		}
@@ -32,7 +34,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT with multi-item array returns JSON", func(t *testing.T) {
 		c := makeCandidate(`["a", "b", "c"]`)
-		result := InterpolatePrompt("Values: $INPUT", c)
+		result := InterpolatePrompt("Values: $INPUT", c, testTaskID)
 		if result != `Values: ["a", "b", "c"]` {
 			t.Errorf("got %q, want %q", result, `Values: ["a", "b", "c"]`)
 		}
@@ -40,7 +42,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[0] array index", func(t *testing.T) {
 		c := makeCandidate(`["first", "second", "third"]`)
-		result := InterpolatePrompt("First: $INPUT[0]", c)
+		result := InterpolatePrompt("First: $INPUT[0]", c, testTaskID)
 		if result != "First: first" {
 			t.Errorf("got %q, want %q", result, "First: first")
 		}
@@ -48,7 +50,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[1] array index", func(t *testing.T) {
 		c := makeCandidate(`["first", "second", "third"]`)
-		result := InterpolatePrompt("Second: $INPUT[1]", c)
+		result := InterpolatePrompt("Second: $INPUT[1]", c, testTaskID)
 		if result != "Second: second" {
 			t.Errorf("got %q, want %q", result, "Second: second")
 		}
@@ -56,7 +58,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[n] out of bounds returns empty", func(t *testing.T) {
 		c := makeCandidate(`["only"]`)
-		result := InterpolatePrompt("Missing: $INPUT[5]", c)
+		result := InterpolatePrompt("Missing: $INPUT[5]", c, testTaskID)
 		if result != "Missing: " {
 			t.Errorf("got %q, want %q", result, "Missing: ")
 		}
@@ -64,7 +66,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[1:] slice from index", func(t *testing.T) {
 		c := makeCandidate(`["a", "b", "c", "d"]`)
-		result := InterpolatePrompt("Rest: $INPUT[1:]", c)
+		result := InterpolatePrompt("Rest: $INPUT[1:]", c, testTaskID)
 		if result != `Rest: ["b","c","d"]` {
 			t.Errorf("got %q, want %q", result, `Rest: ["b","c","d"]`)
 		}
@@ -72,7 +74,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[n:] slice out of bounds returns empty array", func(t *testing.T) {
 		c := makeCandidate(`["a"]`)
-		result := InterpolatePrompt("Rest: $INPUT[5:]", c)
+		result := InterpolatePrompt("Rest: $INPUT[5:]", c, testTaskID)
 		if result != "Rest: []" {
 			t.Errorf("got %q, want %q", result, "Rest: []")
 		}
@@ -80,7 +82,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[\"key\"] map access", func(t *testing.T) {
 		c := makeCandidate(`{"file": "test.go", "line": 42}`)
-		result := InterpolatePrompt("File: $INPUT[\"file\"], Line: $INPUT[\"line\"]", c)
+		result := InterpolatePrompt("File: $INPUT[\"file\"], Line: $INPUT[\"line\"]", c, testTaskID)
 		if result != "File: test.go, Line: 42" {
 			t.Errorf("got %q, want %q", result, "File: test.go, Line: 42")
 		}
@@ -88,7 +90,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[\"key\"] missing key returns empty", func(t *testing.T) {
 		c := makeCandidate(`{"file": "test.go"}`)
-		result := InterpolatePrompt("Missing: $INPUT[\"nope\"]", c)
+		result := InterpolatePrompt("Missing: $INPUT[\"nope\"]", c, testTaskID)
 		if result != "Missing: " {
 			t.Errorf("got %q, want %q", result, "Missing: ")
 		}
@@ -96,7 +98,7 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("mixed syntax in same template", func(t *testing.T) {
 		c := makeCandidate(`["a", "b", "c"]`)
-		result := InterpolatePrompt("All: $INPUT, First: $INPUT[0], Rest: $INPUT[1:]", c)
+		result := InterpolatePrompt("All: $INPUT, First: $INPUT[0], Rest: $INPUT[1:]", c, testTaskID)
 		expected := `All: ["a", "b", "c"], First: a, Rest: ["b","c"]`
 		if result != expected {
 			t.Errorf("got %q, want %q", result, expected)
@@ -105,9 +107,25 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT does not match $INPUTX", func(t *testing.T) {
 		c := makeCandidate(`"test"`)
-		result := InterpolatePrompt("$INPUTX $INPUT", c)
+		result := InterpolatePrompt("$INPUTX $INPUT", c, testTaskID)
 		if result != "$INPUTX test" {
 			t.Errorf("got %q, want %q", result, "$INPUTX test")
+		}
+	})
+
+	t.Run("$TASK_ID interpolation", func(t *testing.T) {
+		c := makeCandidate(`"test"`)
+		result := InterpolatePrompt("Task ID: $TASK_ID", c, testTaskID)
+		if result != "Task ID: 12345" {
+			t.Errorf("got %q, want %q", result, "Task ID: 12345")
+		}
+	})
+
+	t.Run("$TASK_ID with other variables", func(t *testing.T) {
+		c := makeCandidate(`"hello"`)
+		result := InterpolatePrompt("Task: $TASK_ID, Input: $INPUT", c, testTaskID)
+		if result != "Task: 12345, Input: hello" {
+			t.Errorf("got %q, want %q", result, "Task: 12345, Input: hello")
 		}
 	})
 }

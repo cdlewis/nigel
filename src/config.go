@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,7 @@ type Environment struct {
 	Tasks      map[string]Task
 	ProjectDir string
 	RunnerDir  string
+	TaskID     int64 // Unique task ID for this run
 }
 
 func DiscoverEnvironment() (*Environment, error) {
@@ -71,11 +73,15 @@ func DiscoverEnvironment() (*Environment, error) {
 		return nil, fmt.Errorf("failed to load tasks: %w", err)
 	}
 
+	// Seed the random generator and generate a unique task ID
+	rand.Seed(time.Now().UnixNano())
+
 	return &Environment{
 		Config:     *config,
 		Tasks:      tasks,
 		ProjectDir: cwd,
 		RunnerDir:  runnerDir,
+		TaskID:     rand.Int63(),
 	}, nil
 }
 
