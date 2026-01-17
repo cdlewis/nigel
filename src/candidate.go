@@ -276,13 +276,16 @@ func FilterByHash(candidates []Candidate, filter HashFilter) []Candidate {
 
 // IgnoredList manages the list of already-processed candidates.
 type IgnoredList struct {
-	path    string
-	entries map[string]bool
+	path      string
+	entries   map[string]bool // For file-based ignore list
+	attempts  map[string]int  // Track attempts per candidate key
+	maxRepeat int             // When > 0, track attempts instead of permanent ignore
 }
 
 func NewIgnoredList(taskDir string) (*IgnoredList, error) {
 	path := filepath.Join(taskDir, "ignored.log")
 	entries := make(map[string]bool)
+	attempts := make(map[string]int)
 
 	file, err := os.Open(path)
 	if err == nil {
@@ -292,6 +295,7 @@ func NewIgnoredList(taskDir string) (*IgnoredList, error) {
 			line := strings.TrimSpace(scanner.Text())
 			if line != "" {
 				entries[line] = true
+				attempts[line] = 1 // Existing entries count as 1 attempt
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -302,8 +306,9 @@ func NewIgnoredList(taskDir string) (*IgnoredList, error) {
 	}
 
 	return &IgnoredList{
-		path:    path,
-		entries: entries,
+		path:     path,
+		entries:  entries,
+		attempts: attempts,
 	}, nil
 }
 
@@ -318,24 +323,38 @@ func NewIgnoredListFromCommand(command, workDir string) (*IgnoredList, error) {
 	}
 
 	entries := make(map[string]bool)
+	attempts := make(map[string]int)
 	for _, line := range strings.Split(string(output), "\n") {
 		key := strings.TrimSpace(line)
 		if key != "" {
 			entries[key] = true
+			attempts[key] = 1 // Existing entries count as 1 attempt
 		}
 	}
 
 	return &IgnoredList{
-		path:    "", // No file path for command-based lists
-		entries: entries,
+		path:     "", // No file path for command-based lists
+		entries:  entries,
+		attempts: attempts,
 	}, nil
 }
 
 func (l *IgnoredList) Contains(key string) bool {
+	if l.maxRepeat > 0 {
+		return l.attempts[key] >= l.maxRepeat
+	}
 	return l.entries[key]
 }
 
 func (l *IgnoredList) Add(key string) error {
+	// Increment attempt count
+	l.attempts[key]++
+
+	// In repeat mode, don't write to file
+	if l.maxRepeat > 0 {
+		return nil
+	}
+
 	if l.entries[key] {
 		return nil
 	}

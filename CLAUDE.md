@@ -50,6 +50,7 @@ Tasks can be configured in `nigel/<task>/task.yaml`:
 - `accept_best_effort` - If true, commit changes even if Claude indicates partial success
 - `timeout` - Per-candidate timeout duration
 - `ignore_list` - Command that outputs list of already-processed keys (one per line). Use `echo -n` to disable ignoring and reprocess all candidates. If not specified, defaults to reading from `ignored.log` file.
+- `repeat` - Retry each candidate up to N times. If a fix works, the candidate disappears from the source output and retries stop naturally. If the fix fails, the candidate persists and gets retried until the attempt count reaches N. Default is 0 (process each candidate once).
 
 ### Prompt Variable Interpolation
 

@@ -86,6 +86,9 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 		return nil, fmt.Errorf("failed to create ignored list: %w", err)
 	}
 
+	// Set repeat mode on ignored list
+	ignoredList.maxRepeat = task.Repeat
+
 	var claudeLogger *ClaudeLogger
 	if !opts.DryRun {
 		claudeLogger, err = NewClaudeLogger(task.Dir)

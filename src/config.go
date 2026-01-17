@@ -30,6 +30,7 @@ type Task struct {
 	AcceptBestEffort bool          `yaml:"accept_best_effort"`
 	Timeout          time.Duration `yaml:"timeout"`
 	IgnoreList       string `yaml:"ignore_list"` // Command to generate ignore list
+	Repeat           int           `yaml:"repeat"` // Retry each candidate N times
 }
 
 type Environment struct {
