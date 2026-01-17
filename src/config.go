@@ -135,6 +135,11 @@ func loadTasks(runnerDir string) (map[string]Task, error) {
 		// Expand tilde in claude command if present
 		task.ClaudeCommand = expandTilde(task.ClaudeCommand)
 
+		// Apply defaults
+		if task.Timeout == 0 {
+			task.Timeout = 1 * time.Hour
+		}
+
 		if task.CandidateSource == "" {
 			return nil, fmt.Errorf("task %s missing required field 'candidate_source'", entry.Name())
 		}
