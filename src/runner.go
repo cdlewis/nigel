@@ -48,11 +48,13 @@ func calculateBackoff(level int) time.Duration {
 }
 
 type RunnerOptions struct {
-	Limit      int
-	TimeLimit  time.Duration
-	DryRun     bool
-	Verbose    bool
-	HashFilter HashFilter
+	Limit         int
+	TimeLimit     time.Duration
+	DryRun        bool
+	Verbose       bool
+	HashFilter    HashFilter
+	Timeout       time.Duration // Per-candidate timeout (overrides task.yaml)
+	ClaudeCommand string        // Claude command (overrides task.yaml)
 }
 
 type Runner struct {
@@ -265,15 +267,29 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	claudeFlags := r.task.ClaudeFlags
 
-	// Use task-level claude_command if set, otherwise fall back to global
-	claudeCmd := r.task.ClaudeCommand
+	// Determine claude command: CLI override > task-level > global
+	claudeCmd := r.opts.ClaudeCommand
+	if claudeCmd != "" {
+		if r.opts.Verbose {
+			fmt.Printf(ColorInfo("Using CLI override claude_command: %s\n"), claudeCmd)
+		}
+	} else {
+		claudeCmd = r.task.ClaudeCommand
+		if claudeCmd != "" && r.opts.Verbose {
+			fmt.Printf(ColorInfo("Using task-level claude_command: %s\n"), claudeCmd)
+		}
+	}
 	if claudeCmd == "" {
 		claudeCmd = r.env.Config.ClaudeCommand
-	} else if r.opts.Verbose {
-		fmt.Printf(ColorInfo("Using task-level claude_command: %s\n"), claudeCmd)
 	}
 
-	claudeOutput, err := RunClaudeCommand(claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, r.task.Timeout)
+	// Determine timeout: CLI override > task-level
+	timeout := r.opts.Timeout
+	if timeout == 0 {
+		timeout = r.task.Timeout
+	}
+
+	claudeOutput, err := RunClaudeCommand(claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, timeout)
 
 	timer.Stop()
 
@@ -293,7 +309,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	// Check for timeout
 	if _, isTimeout := err.(*timeoutError); isTimeout {
-		fmt.Println(ColorWarning(fmt.Sprintf("Candidate timeout after %s", r.task.Timeout)))
+		fmt.Println(ColorWarning(fmt.Sprintf("Candidate timeout after %s", timeout)))
 		return r.handleTimeout(candidate)
 	}
 
