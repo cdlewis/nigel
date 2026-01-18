@@ -1,0 +1,22 @@
+candidate_source: |
+  # Sleep for > 5 seconds to trigger the delayed progress timer
+  sleep 7
+  # Output candidates that haven't been fixed yet
+  candidates='["slow-item-1", "slow-item-2"]'
+  result='['
+  first=true
+  for item in slow-item-1 slow-item-2; do
+    if [[ ! -f ".fixed-${item}" ]]; then
+      if $first; then
+        first=false
+      else
+        result+=','
+      fi
+      result+="\"${item}\""
+    fi
+  done
+  result+=']'
+  echo "$result"
+
+prompt: |
+  Fix the slow issue: $INPUT

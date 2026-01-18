@@ -1,0 +1,20 @@
+candidate_source: |
+  # Output candidates that haven't been fixed yet
+  candidates='["inactivity-item-1", "inactivity-item-2"]'
+  result='['
+  first=true
+  for item in inactivity-item-1 inactivity-item-2; do
+    if [[ ! -f ".fixed-${item}" ]]; then
+      if $first; then
+        first=false
+      else
+        result+=','
+      fi
+      result+="\"${item}\""
+    fi
+  done
+  result+=']'
+  echo "$result"
+
+prompt: |
+  Fix the inactivity issue: $INPUT
