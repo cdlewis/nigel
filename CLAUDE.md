@@ -86,8 +86,10 @@ rm nigel/demo-task/*.log .fixed-*
 
 ```bash
 cd test-environment
-./test-smoke.sh
+./test-smoke.sh --non-interactive
 ```
+
+Use `--non-interactive` for automated execution (skips "Press Enter" prompts). Omit the flag for manual testing with pauses between tests.
 
 The smoke test (`test-smoke.sh`) validates:
 - Normal behavior (quick operations, no timers)
