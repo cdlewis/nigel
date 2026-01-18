@@ -4,21 +4,31 @@
 set -e
 
 DELAY="${MOCK_CLAUDE_DELAY:-3}"
+STREAMING=0
 PROMPT=""
 
-# Parse -p flag
+# Parse flags
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -p)
-            # Check if the next arg looks like a flag (starts with -) or is empty
-            # If so, read from stdin (heredoc support)
-            if [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+            # Check if the next arg looks like a flag (starts with -), is empty,
+            # or is a heredoc (starts with <<) - in those cases, read from stdin
+            if [[ -z "$2" ]] || [[ "$2" == -* ]] || [[ "$2" == "<"* ]]; then
                 PROMPT=$(cat)
                 shift
             else
                 PROMPT="$2"
                 shift 2
             fi
+            ;;
+        --output-format)
+            if [[ "$2" == "stream-json" ]]; then
+                STREAMING=1
+            fi
+            shift 2
+            ;;
+        --print|--include-partial-messages|--verbose)
+            shift
             ;;
         *)
             shift
@@ -29,16 +39,90 @@ done
 # Extract candidate from prompt
 CANDIDATE=$(echo "$PROMPT" | grep -oP 'Fix the issue: \K\S+' || echo "unknown")
 
-sleep "$DELAY"
-
-# Output with tuning info
-echo "[mock-claude] Processed '$CANDIDATE' in ${DELAY}s"
-echo ""
-echo "Tuning: MOCK_CLAUDE_DELAY=${DELAY}s  MOCK_CLAUDE_FIX=${MOCK_CLAUDE_FIX:-0}"
+# Response text - split into multiple message blocks
+MSG1="[mock-claude] Analyzing '$CANDIDATE'..."
+MSG2="I'll examine the code to identify the issue."
+MSG3="Tuning: MOCK_CLAUDE_DELAY=${DELAY}s  MOCK_CLAUDE_FIX=${MOCK_CLAUDE_FIX:-0}"
 
 if [[ "$MOCK_CLAUDE_FIX" == "1" ]]; then
     touch ".fixed-${CANDIDATE}"
-    echo "Result: Fixed"
+    MSG4="Result: Fixed - the issue has been resolved."
 else
-    echo "Result: Not fixed"
+    MSG4="Result: Not fixed - additional work needed."
+fi
+
+# Helper to stream a message chunk
+stream_message() {
+    local text="$1"
+    local words=($text)
+    local word_count=${#words[@]}
+
+    for ((i=0; i<word_count; i++)); do
+        if [[ $i -lt $((word_count - 1)) ]]; then
+            text_chunk="${words[i]} "
+        else
+            text_chunk="${words[i]}"
+        fi
+        sleep 0.05
+        text_chunk=$(echo "$text_chunk" | sed 's/"/\\"/g')
+        echo "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"${text_chunk}\"}}}"
+    done
+}
+
+if [[ "$STREAMING" == "1" ]]; then
+    # Stream JSON format (mimics real Claude --output-format stream-json)
+
+    # System init event
+    echo '{"type":"system","subtype":"init","cwd":"/test","session_id":"mock-session","tools":[],"model":"mock-model","permissionMode":"default","claude_code_version":"test"}'
+
+    # Message 1
+    echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"mock-msg-1","type":"message","role":"assistant","model":"mock","content":[]}}}'
+    echo '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}'
+    stream_message "$MSG1"
+    echo '{"type":"stream_event","event":{"type":"content_block_stop","index":0}}'
+    echo '{"type":"stream_event","event":{"type":"message_stop"}}'
+
+    # Pause between messages (longer if testing inactivity timer)
+    PAUSE="${MOCK_CLAUDE_INACTIVITY_TEST:-0}"
+    if [[ "$PAUSE" == "1" ]]; then
+        sleep 35  # Trigger the 30-second inactivity timer
+    else
+        sleep 0.2
+    fi
+
+    # Message 2
+    echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"mock-msg-2","type":"message","role":"assistant","model":"mock","content":[]}}}'
+    echo '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}'
+    stream_message "$MSG2"
+    echo '{"type":"stream_event","event":{"type":"content_block_stop","index":0}}'
+    echo '{"type":"stream_event","event":{"type":"message_stop"}}'
+
+    # Brief pause (normal speed after first message)
+    sleep 0.2
+
+    # Message 3
+    echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"mock-msg-3","type":"message","role":"assistant","model":"mock","content":[]}}}'
+    echo '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}'
+    stream_message "$MSG3"
+    echo '{"type":"stream_event","event":{"type":"content_block_stop","index":0}}'
+    echo '{"type":"stream_event","event":{"type":"message_stop"}}'
+
+    # Brief pause
+    sleep 0.2
+
+    # Message 4
+    echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"mock-msg-4","type":"message","role":"assistant","model":"mock","content":[]}}}'
+    echo '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}'
+    stream_message "$MSG4"
+    echo '{"type":"stream_event","event":{"type":"content_block_stop","index":0}}'
+    echo '{"type":"stream_event","event":{"type":"message_stop"}}'
+
+    # Final result
+    FULL_RESPONSE="$MSG1 $MSG2 $MSG3 $MSG4"
+    RESULT_JSON=$(echo "$FULL_RESPONSE" | sed 's/"/\\"/g' | tr '\n' ' ')
+    echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":1000,\"result\":\"${RESULT_JSON}\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}"
+else
+    # Non-streaming output (original behavior)
+    sleep "$DELAY"
+    echo "$MSG1 $MSG2 $MSG3 $MSG4"
 fi

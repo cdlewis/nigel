@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +18,29 @@ import (
 // timeoutError indicates Claude execution timed out
 type timeoutError struct {
 	duration time.Duration
+}
+
+// StreamCallback is called for each chunk of text received from Claude.
+type StreamCallback func(text string)
+
+// Claude stream event types
+type streamEvent struct {
+	Type  string                 `json:"type"`
+	Event map[string]interface{} `json:"event,omitempty"`
+}
+
+// contentBlockDelta represents the delta content in a stream event
+type contentBlockDelta struct {
+	Delta struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"delta"`
+}
+
+// resultEvent represents the final result event
+type resultEvent struct {
+	Type   string `json:"type"`
+	Result string `json:"result,omitempty"`
 }
 
 func (e *timeoutError) Error() string {
@@ -111,17 +136,23 @@ func KillRunningProcess() {
 	}
 }
 
-// RunClaudeCommand executes the Claude command with prompt, timeout, streaming output to both stdout and a log writer.
-// Returns the captured output (for rate limit detection) and any error.
-func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration) (string, error) {
+// RunClaudeCommand executes the Claude command with prompt, timeout, and streaming output.
+// The streamCb callback is invoked for each chunk of text received.
+// Returns the accumulated output (for rate limit detection) and any error.
+func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration, streamCb StreamCallback) (string, error) {
 	// Build the command using heredoc to avoid shell escaping issues
+	// Using --output-format stream-json --include-partial-messages --verbose
+	// Note: --print is required for --output-format to work
 	const delimiter = "__NIGEL_PROMPT_EOF__"
+	jsonFlags := "--print --output-format stream-json --include-partial-messages --verbose"
 
 	var cmdStr string
 	if claudeFlags != "" {
-		cmdStr = fmt.Sprintf("%s %s -p <<'%s'\n%s\n%s", claudeCmd, claudeFlags, delimiter, prompt, delimiter)
+		cmdStr = fmt.Sprintf("%s %s %s -p <<'%s'\n%s\n%s",
+			claudeCmd, jsonFlags, claudeFlags, delimiter, prompt, delimiter)
 	} else {
-		cmdStr = fmt.Sprintf("%s -p <<'%s'\n%s\n%s", claudeCmd, delimiter, prompt, delimiter)
+		cmdStr = fmt.Sprintf("%s %s -p <<'%s'\n%s\n%s",
+			claudeCmd, jsonFlags, delimiter, prompt, delimiter)
 	}
 
 	// Log the exact command being executed (for debugging hangs)
@@ -140,17 +171,15 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 		Pdeathsig: syscall.SIGTERM,
 	}
 
-	// Buffer to capture output (displayed after timer stops)
-	var outputBuf bytes.Buffer
-
-	// Write to log and capture buffer, but not stdout (displayed later)
-	if logWriter != nil {
-		cmd.Stdout = io.MultiWriter(logWriter, &outputBuf)
-		cmd.Stderr = io.MultiWriter(logWriter, &outputBuf)
-	} else {
-		cmd.Stdout = &outputBuf
-		cmd.Stderr = &outputBuf
+	// Create pipe for stdout so we can read line-by-line
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
 	}
+
+	// Capture stderr to buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	// Start the process and track it for signal forwarding
 	if err := cmd.Start(); err != nil {
@@ -158,8 +187,93 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 	}
 	runningProcess = cmd.Process
 
+	// Goroutine to read stdout line-by-line and parse JSON
+	type streamResult struct {
+		fullOutput string
+		err        error
+	}
+	resultCh := make(chan streamResult, 1)
+
+	go func() {
+		var fullOutput strings.Builder
+		scanner := bufio.NewScanner(stdoutPipe)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			// Try to parse as stream event
+			var se streamEvent
+			if jsonErr := json.Unmarshal([]byte(line), &se); jsonErr != nil {
+				// Not valid JSON - write as-is to log and continue
+				if logWriter != nil {
+					fmt.Fprintln(logWriter, line)
+				}
+				fullOutput.WriteString(line + "\n")
+				continue
+			}
+
+			// Handle different event types
+			switch se.Type {
+			case "stream_event":
+				// Check if this is a content_block_delta
+				if eventType, ok := se.Event["type"].(string); ok && eventType == "content_block_delta" {
+					// Extract the delta text
+					eventJSON, _ := json.Marshal(se.Event)
+					var delta contentBlockDelta
+					if json.Unmarshal(eventJSON, &delta) == nil && delta.Delta.Type == "text_delta" && delta.Delta.Text != "" {
+						text := delta.Delta.Text
+						// Stream the text content to stdout
+						if streamCb != nil {
+							streamCb(text)
+						}
+						// Also write to log
+						if logWriter != nil {
+							fmt.Fprint(logWriter, text)
+						}
+						fullOutput.WriteString(text)
+					}
+				}
+				// Check if this is message_stop - add newline between messages
+				if eventType, ok := se.Event["type"].(string); ok && eventType == "message_stop" {
+					if streamCb != nil {
+						streamCb("\n")
+					}
+					if logWriter != nil {
+						fmt.Fprint(logWriter, "\n")
+					}
+					fullOutput.WriteString("\n")
+				}
+
+			case "result":
+				// Final result event - completion confirmed
+				var re resultEvent
+				if json.Unmarshal([]byte(line), &re) == nil && re.Result != "" {
+					// Completion confirmed
+				}
+			}
+		}
+
+		// Add a final newline after streaming is complete
+		if streamCb != nil {
+			streamCb("\n")
+		}
+		if logWriter != nil {
+			fmt.Fprintln(logWriter)
+		}
+
+		// Include stderr in output for rate limit detection
+		if stderrBuf.Len() > 0 {
+			fullOutput.WriteString(stderrBuf.String())
+		}
+
+		resultCh <- streamResult{
+			fullOutput: fullOutput.String(),
+			err:        scanner.Err(),
+		}
+	}()
+
 	// Wait for completion or timeout
-	var err error
+	var waitErr error
 	if timeout > 0 {
 		done := make(chan error, 1)
 		go func() {
@@ -170,16 +284,24 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 		case <-time.After(timeout):
 			KillRunningProcess()
 			runningProcess = nil
-			return outputBuf.String(), &timeoutError{duration: timeout}
-		case err = <-done:
+			// Wait for the stream reader to finish
+			result := <-resultCh
+			return result.fullOutput, &timeoutError{duration: timeout}
+		case waitErr = <-done:
 			runningProcess = nil
 		}
 	} else {
-		err = cmd.Wait()
+		waitErr = cmd.Wait()
 		runningProcess = nil
 	}
 
-	return outputBuf.String(), err
+	// Get the full output from the stream reader
+	result := <-resultCh
+	if result.err != nil {
+		return result.fullOutput, result.err
+	}
+
+	return result.fullOutput, waitErr
 }
 
 // Regex patterns for $INPUT interpolation

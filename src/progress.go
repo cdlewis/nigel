@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -50,24 +51,29 @@ func (s *SessionStats) Median() (time.Duration, bool) {
 
 // ProgressTimer displays a live updating timer during long operations.
 type ProgressTimer struct {
-	label     string
-	startTime time.Time
-	stats     *SessionStats
-	stopCh    chan struct{}
-	doneCh    chan struct{}
+	label        string
+	startTime    time.Time
+	stats        *SessionStats
+	stopCh       chan struct{}
+	doneCh       chan struct{}
+	streamCh     chan string
+	lastLine     string // Tracks last streamed line for timer redrawing
+	mu           sync.Mutex
 }
 
 // NewProgressTimer creates a new timer with the given label.
 func NewProgressTimer(label string, stats *SessionStats) *ProgressTimer {
 	return &ProgressTimer{
-		label:  label,
-		stats:  stats,
-		stopCh: make(chan struct{}),
-		doneCh: make(chan struct{}),
+		label:    label,
+		stats:    stats,
+		stopCh:   make(chan struct{}),
+		doneCh:   make(chan struct{}),
+		streamCh: make(chan string, 100), // Buffer to avoid blocking
 	}
 }
 
 // Start begins the timer display. Call Stop() when the operation completes.
+// Use StreamText() to send text to be displayed above the timer.
 func (p *ProgressTimer) Start() {
 	p.startTime = time.Now()
 
@@ -88,9 +94,43 @@ func (p *ProgressTimer) Start() {
 				return
 			case <-ticker.C:
 				p.printProgress()
+			case text := <-p.streamCh:
+				p.handleStreamText(text)
+				// After handling text, ensure timer is redrawn
+				p.printProgress()
 			}
 		}
 	}()
+}
+
+// StreamText sends text to be displayed above the timer line.
+// Safe to call from multiple goroutines.
+func (p *ProgressTimer) StreamText(text string) {
+	select {
+	case p.streamCh <- text:
+	case <-p.stopCh:
+		// Timer stopped, discard text
+	}
+}
+
+func (p *ProgressTimer) handleStreamText(text string) {
+	if text == "" {
+		return
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Clear the timer line
+	fmt.Fprint(os.Stdout, "\r\033[K")
+
+	// Print the text immediately
+	fmt.Fprint(os.Stdout, text)
+
+	// Ensure we end with newline so timer appears on next line
+	if !strings.HasSuffix(text, "\n") {
+		fmt.Fprint(os.Stdout, "\n")
+	}
 }
 
 func (p *ProgressTimer) printProgress() {
@@ -168,6 +208,32 @@ func (d *DelayedProgressTimer) Stop() {
 	d.stopped = true
 	if d.timer != nil {
 		d.timer.Stop()
+		d.timer = nil
 	}
 	d.mu.Unlock()
+}
+
+// Reset restarts the inactivity timer. If a timer was being displayed, it will be hidden
+// and the delay period starts over.
+func (d *DelayedProgressTimer) Reset() {
+	d.mu.Lock()
+	// Stop any running timer display
+	if d.timer != nil {
+		d.timer.Stop()
+		d.timer = nil
+	}
+	// Reset stopped state and restart delay
+	d.stopped = false
+	d.startTime = time.Now()
+	d.mu.Unlock()
+	// Restart the delay goroutine
+	go func() {
+		<-time.After(d.delay)
+		d.mu.Lock()
+		if !d.stopped && d.timer == nil {
+			d.timer = NewProgressTimer(d.label, nil)
+			d.timer.Start()
+		}
+		d.mu.Unlock()
+	}()
 }

@@ -16,6 +16,7 @@ const (
 	colorCyan    = "\033[36m"
 	colorDim     = "\033[90m" // grey (bright black)
 	colorBold    = "\033[1m"
+	colorItalic  = "\033[3m"
 )
 
 // Gradient colors for rainbow effect (red -> yellow -> green -> cyan -> blue -> magenta)
@@ -56,6 +57,11 @@ func ColorBold(text string) string {
 // ColorDim returns dim grey text
 func ColorDim(text string) string {
 	return colorDim + text + colorReset
+}
+
+// ColorClaude returns dim italic text for Claude output
+func ColorClaude(text string) string {
+	return colorDim + colorItalic + text + colorReset
 }
 
 // Gradient applies a rainbow gradient to text

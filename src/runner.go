@@ -271,10 +271,6 @@ func (r *Runner) runIteration() (done bool, err error) {
 		return true, nil
 	}
 
-	// Run Claude with progress timer
-	timer := NewProgressTimer("Running Claude...", r.claudeStats)
-	timer.Start()
-
 	if r.claudeLogger != nil {
 		r.claudeLogger.StartEntry(prompt)
 	}
@@ -303,14 +299,28 @@ func (r *Runner) runIteration() (done bool, err error) {
 		timeout = r.task.Timeout
 	}
 
-	claudeOutput, err := RunClaudeCommand(claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, timeout)
+	// Create inactivity timer - shows after 30 seconds of no streaming output
+	inactivityTimer := NewDelayedProgressTimer("Waiting for Claude...", 30*time.Second)
 
-	timer.Stop()
-
-	// Display Claude's output now that timer is stopped
-	if claudeOutput != "" {
-		fmt.Print(claudeOutput)
+	// Create stream callback that writes text directly to stdout with dim/italic styling
+	// Also resets the inactivity timer on each chunk of content
+	streamCb := func(text string) {
+		inactivityTimer.Reset()
+		fmt.Fprint(os.Stdout, ColorClaude(text))
+		os.Stdout.Sync()
 	}
+
+	fmt.Fprintln(os.Stdout, ColorInfo("Running Claude..."))
+	os.Stdout.Sync()
+	inactivityTimer.Start()
+
+	claudeOutput, err := RunClaudeCommand(claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, timeout, streamCb)
+
+	inactivityTimer.Stop()
+
+	// Reset color after streaming completes
+	fmt.Fprint(os.Stdout, colorReset)
+	os.Stdout.Sync()
 
 	if r.claudeLogger != nil {
 		r.claudeLogger.EndEntry()
