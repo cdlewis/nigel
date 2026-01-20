@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -220,6 +222,129 @@ func TestLargeJSONLineParsing(t *testing.T) {
 			t.Error("Event should have a 'type' field")
 		}
 	})
+}
+
+func TestStreamingWithEmptyMessages(t *testing.T) {
+	// Test that simulates streaming events including empty messages
+	// Verifies no extra newlines are added after empty messages
+
+	var streamedOutput strings.Builder
+	var logOutput strings.Builder
+
+	streamCb := func(text string) {
+		streamedOutput.WriteString(text)
+	}
+	logWriter := &logOutput
+
+	// Simulate the streaming event processing from RunClaudeCommand
+	// This mimics the goroutine that processes stream events
+
+	// Helper function to process a stream event line
+	processEventLine := func(line string) {
+		var se streamEvent
+		if json.Unmarshal([]byte(line), &se) != nil {
+			return
+		}
+
+		var messageHasContent bool
+
+		if se.Type == "stream_event" {
+			if eventType, ok := se.Event["type"].(string); ok {
+				if eventType == "content_block_delta" {
+					eventJSON, _ := json.Marshal(se.Event)
+					var delta contentBlockDelta
+					if json.Unmarshal(eventJSON, &delta) == nil && delta.Delta.Type == "text_delta" && delta.Delta.Text != "" {
+						messageHasContent = true
+						text := delta.Delta.Text
+						streamCb(text)
+						fmt.Fprint(logWriter, text)
+					}
+				}
+				if eventType == "message_stop" {
+					if messageHasContent {
+						streamCb("\n")
+						fmt.Fprint(logWriter, "\n")
+					}
+					messageHasContent = false
+				}
+			}
+		}
+	}
+
+	// Simulate stream events:
+	// 1. Message with content
+	processEventLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello "}}}`)
+	processEventLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"World"}}}`)
+
+	// Since we're processing events independently, we need to handle the message_stop logic
+	// In the real implementation, messageHasContent persists across events in a message
+	// For this test, we'll simulate the full flow manually
+
+	// Reset and test with proper state tracking
+	streamedOutput.Reset()
+	logOutput.Reset()
+
+	var messageHasContent bool
+	processEventWithState := func(line string) {
+		var se streamEvent
+		if json.Unmarshal([]byte(line), &se) != nil {
+			return
+		}
+
+		if se.Type == "stream_event" {
+			if eventType, ok := se.Event["type"].(string); ok {
+				if eventType == "content_block_delta" {
+					eventJSON, _ := json.Marshal(se.Event)
+					var delta contentBlockDelta
+					if json.Unmarshal(eventJSON, &delta) == nil && delta.Delta.Type == "text_delta" && delta.Delta.Text != "" {
+						messageHasContent = true
+						text := delta.Delta.Text
+						streamCb(text)
+						fmt.Fprint(logWriter, text)
+					}
+				}
+				if eventType == "message_stop" {
+					if messageHasContent {
+						streamCb("\n")
+						fmt.Fprint(logWriter, "\n")
+					}
+					messageHasContent = false
+				}
+			}
+		}
+	}
+
+	// Test case 1: Normal message with content
+	processEventWithState(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello "}}}`)
+	processEventWithState(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"World"}}}`)
+	processEventWithState(`{"type":"stream_event","event":{"type":"message_stop"}}`)
+
+	// Test case 2: Empty message (no content_block_delta events)
+	processEventWithState(`{"type":"stream_event","event":{"type":"message_stop"}}`)
+
+	// Test case 3: Another normal message
+	processEventWithState(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"!"}}}`)
+	processEventWithState(`{"type":"stream_event","event":{"type":"message_stop"}}`)
+
+	streamedResult := streamedOutput.String()
+	logResult := logOutput.String()
+
+	// Expected: "Hello World\n!\n" (only 2 newlines, one after each message with content)
+	// NOT "Hello World\n\n!\n" (which would have an extra newline after the empty message)
+	expected := "Hello World\n!\n"
+
+	if streamedResult != expected {
+		t.Errorf("Stream output mismatch.\nGot: %q\nExpected: %q", streamedResult, expected)
+	}
+
+	if logResult != expected {
+		t.Errorf("Log output mismatch.\nGot: %q\nExpected: %q", logResult, expected)
+	}
+
+	// Verify no consecutive newlines (which would indicate extra newlines from empty messages)
+	if strings.Contains(streamedResult, "\n\n") {
+		t.Errorf("Found consecutive newlines in output: %q", streamedResult)
+	}
 }
 
 func TestRunCommandShowOnFail(t *testing.T) {

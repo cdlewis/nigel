@@ -75,6 +75,15 @@ if [[ "$STREAMING" == "1" ]]; then
     # System init event
     echo '{"type":"system","subtype":"init","cwd":"/test","session_id":"mock-session","tools":[],"model":"mock-model","permissionMode":"default","claude_code_version":"test"}'
 
+    # Check if empty message mode is enabled
+    if [[ "${MOCK_CLAUDE_EMPTY_MSG:-0}" == "1" ]]; then
+        # Emit an empty message (message_start → message_stop with no content)
+        echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"mock-msg-empty","type":"message","role":"assistant","model":"mock","content":[]}}}'
+        echo '{"type":"stream_event","event":{"type":"message_stop"}}'
+        # Brief pause
+        sleep 0.2
+    fi
+
     # Message 1
     echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"mock-msg-1","type":"message","role":"assistant","model":"mock","content":[]}}}'
     echo '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}'

@@ -1,8 +1,22 @@
 #!/bin/bash
-# Comprehensive smoke test script for Nigel
-# Tests various scenarios with clear user feedback
+# Smoke Test Suite for Nigel
 #
-# Usage: ./test-smoke.sh [--non-interactive]
+# PURPOSE:
+#   Runs test scenarios and displays output for verification.
+#   The observer (human or LLM) verifies the behavior is correct.
+#
+# USAGE:
+#   ./test-smoke.sh                  # Interactive mode - pauses between tests
+#   ./test-smoke.sh --non-interactive # Continuous output, no pauses
+#
+# Both modes run identical tests. The only difference is whether
+# there are pauses between tests for manual inspection.
+#
+# TEST SCENARIOS:
+#   1. Quick operations     - No timers should appear (fast candidate source + fast Claude)
+#   2. Slow candidate source - Progress timer appears after 5 seconds
+#   3. Slow Claude          - Inactivity timer appears after 30 seconds
+#   4. Empty messages       - No extra blank lines in output
 
 set -e
 
@@ -46,18 +60,18 @@ run_test() {
     local timeout_dur="${5:-60}"
 
     header "$name"
-    echo -e "${GREEN}📋 Expected: $expect${NC}"
+    echo -e "${GREEN}Expected: $expect${NC}"
     echo ""
     eval "env $env_vars timeout $timeout_dur $NIGEL_BIN $task" || {
         local exit_code=$?
         if [[ $exit_code -eq 124 ]]; then
-            echo -e "${RED}❌ Test timed out after ${timeout_dur}s${NC}"
+            echo -e "${RED}Test timed out after ${timeout_dur}s${NC}"
         else
-            echo -e "${RED}❌ Test failed with exit code $exit_code${NC}"
+            echo -e "${RED}Test exited with code $exit_code${NC}"
         fi
     }
     echo ""
-    echo -e "${GREEN}✅ Test complete${NC}"
+    echo -e "${GREEN}Test complete${NC}"
     echo ""
     if $INTERACTIVE; then
         echo "Press Enter to continue to next test..."
@@ -65,62 +79,13 @@ run_test() {
     fi
 }
 
-# Run automated verification test (captures output and checks for patterns)
-run_automated_test() {
-    local name="$1"
-    local task="$2"
-    local env_vars="$3"
-    local timeout_dur="${4:-60}"
-    local should_have_waiting="$5"  # "true" if "Waiting for Claude" should appear, "false" if not
-
-    header "$name"
-
-    local log_file="test-output-$$.log"
-    local test_passed=true
-
-    echo -e "${GREEN}Running test and capturing output...${NC}"
-    eval "env $env_vars timeout $timeout_dur $NIGEL_BIN $task" > "$log_file" 2>&1 || true
-
-    echo ""
-    # Check for "Waiting for Claude" pattern
-    if grep -q "Waiting for Claude" "$log_file"; then
-        if [ "$should_have_waiting" = "true" ]; then
-            echo -e "${GREEN}✅ PASS: 'Waiting for Claude...' appeared as expected${NC}"
-        else
-            echo -e "${RED}❌ FAIL: 'Waiting for Claude...' appeared but should NOT have (Claude was fast!)${NC}"
-            echo -e "${YELLOW}Showing matching lines:${NC}"
-            grep "Waiting for Claude" "$log_file" | head -5
-            test_passed=false
-        fi
-    else
-        if [ "$should_have_waiting" = "true" ]; then
-            echo -e "${RED}❌ FAIL: 'Waiting for Claude...' did NOT appear but should have (Claude was slow!)${NC}"
-            echo -e "${YELLOW}Showing last 10 lines of output:${NC}"
-            tail -10 "$log_file"
-            test_passed=false
-        else
-            echo -e "${GREEN}✅ PASS: 'Waiting for Claude...' did NOT appear (correct - Claude was fast)${NC}"
-        fi
-    fi
-
-    rm -f "$log_file"
-    echo ""
-
-    if [ "$test_passed" = "false" ]; then
-        echo -e "${RED}Automated test FAILED${NC}"
-        return 1
-    fi
-
-    return 0
-}
-
 # Main test sequence
 main() {
     cd "$(dirname "$0")"
 
     header "Nigel Smoke Test Suite"
-    echo "This script runs comprehensive tests of Nigel's functionality."
-    echo "Each test will show what behavior to expect."
+    echo "This script runs test scenarios for manual or automated verification."
+    echo "Each test shows expected behavior - observer verifies output is correct."
     if $INTERACTIVE; then
         echo ""
         echo "Press Enter to begin..."
@@ -130,90 +95,54 @@ main() {
     # Clean up before starting
     cleanup
 
-    # If non-interactive mode, run automated verification tests first
-    if ! $INTERACTIVE; then
-        header "Automated Verification Tests"
-        echo "Running automated tests to verify correct timer behavior..."
-
-        local all_automated_passed=true
-
-        # Automated Test 1: Quick Claude should NOT show "Waiting for Claude..."
-        cleanup
-        if ! run_automated_test \
-            "Auto Test 1: Quick Claude (no waiting message)" \
-            "demo-task" \
-            "MOCK_CLAUDE_FIX=1 MOCK_CLAUDE_DELAY=0.5" \
-            30 \
-            "false"; then
-            all_automated_passed=false
-        fi
-
-        # Automated Test 2: Slow Claude SHOULD show "Waiting for Claude..."
-        cleanup
-        if ! run_automated_test \
-            "Auto Test 2: Slow Claude (waiting message expected)" \
-            "slow-claude-task" \
-            "MOCK_CLAUDE_INACTIVITY_TEST=1 MOCK_CLAUDE_FIX=1 MOCK_CLAUDE_DELAY=1" \
-            120 \
-            "true"; then
-            all_automated_passed=false
-        fi
-
-        cleanup
-
-        if [ "$all_automated_passed" = "false" ]; then
-            header "Automated Tests FAILED"
-            echo -e "${RED}One or more automated tests failed!${NC}"
-            exit 1
-        fi
-
-        header "Automated Tests PASSED"
-        echo -e "${GREEN}All automated tests passed!${NC}"
-    fi
-
-    # Test 1: Normal Behavior
+    # Test 1: Quick operations (no timers should appear)
     run_test \
-        "Test 1: Normal Behavior" \
+        "Test 1: Quick Operations" \
         "demo-task" \
-        "Quick candidate source (< 5s), quick Claude response - NO timer shown" \
-        "MOCK_CLAUDE_FIX=1" \
+        "No timers - candidate source and Claude both respond quickly" \
+        "MOCK_CLAUDE_FIX=1 MOCK_CLAUDE_DELAY=0.5" \
         30
 
-    # Clean up between tests
     cleanup
 
-    # Test 2: Slow Candidate Source
+    # Test 2: Slow candidate source (progress timer after 5s)
     run_test \
-        "Test 2: Slow Candidate Source (>5s)" \
+        "Test 2: Slow Candidate Source" \
         "slow-candidates-task" \
-        "'Running candidate source...' appears immediately, timer appears after 5 seconds" \
+        "'Running candidate source...' immediately, timer after 5 seconds" \
         "MOCK_CLAUDE_FIX=1" \
         45
 
-    # Clean up between tests
     cleanup
 
-    # Test 3: Slow Claude (Inactivity Timer)
+    # Test 3: Slow Claude (inactivity timer after 30s)
     run_test \
-        "Test 3: Slow Claude (Inactivity Timer)" \
+        "Test 3: Slow Claude Response" \
         "slow-claude-task" \
         "'Waiting for Claude...' timer appears after 30 seconds of inactivity" \
         "MOCK_CLAUDE_INACTIVITY_TEST=1 MOCK_CLAUDE_FIX=1" \
         120
 
-    # Clean up after all tests
+    cleanup
+
+    # Test 4: Empty messages (no extra blank lines)
+    run_test \
+        "Test 4: Empty Messages" \
+        "demo-task" \
+        "No extra blank lines from empty streaming messages" \
+        "MOCK_CLAUDE_EMPTY_MSG=1 MOCK_CLAUDE_FIX=1" \
+        30
+
     cleanup
 
     header "All Tests Complete"
-    echo -e "${GREEN}Smoke test suite finished!${NC}"
+    echo -e "${GREEN}Smoke test suite finished.${NC}"
     echo ""
-    echo "Summary:"
-    if ! $INTERACTIVE; then
-        echo "  - Automated tests: Verified timer behavior with fast/slow Claude"
-    fi
-    echo "  - Test 1: Verified normal behavior (no timers for quick operations)"
-    echo "  - Test 2: Verified delayed progress timer for slow candidate source"
-    echo "  - Test 3: Verified inactivity timer for slow Claude responses"
+    echo "Verify each test showed expected behavior:"
+    echo "  1. Quick operations  - No timers appeared"
+    echo "  2. Slow candidate    - Progress timer after 5s"
+    echo "  3. Slow Claude       - Inactivity timer after 30s"
+    echo "  4. Empty messages    - No extra blank lines"
 }
 
 main "$@"

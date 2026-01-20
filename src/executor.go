@@ -196,6 +196,7 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 
 	go func() {
 		var fullOutput strings.Builder
+		var messageHasContent bool
 		scanner := bufio.NewScanner(stdoutPipe)
 		// Increase buffer size to handle large JSON responses from Claude
 		// Default is 64KB which isn't enough for large code blocks
@@ -225,6 +226,7 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 					var delta contentBlockDelta
 					if json.Unmarshal(eventJSON, &delta) == nil && delta.Delta.Type == "text_delta" && delta.Delta.Text != "" {
 						text := delta.Delta.Text
+						messageHasContent = true
 						// Stream the text content to stdout
 						if streamCb != nil {
 							streamCb(text)
@@ -236,15 +238,18 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 						fullOutput.WriteString(text)
 					}
 				}
-				// Check if this is message_stop - add newline between messages
+				// Check if this is message_stop - add newline between messages (only if content was received)
 				if eventType, ok := se.Event["type"].(string); ok && eventType == "message_stop" {
-					if streamCb != nil {
-						streamCb("\n")
+					if messageHasContent {
+						if streamCb != nil {
+							streamCb("\n")
+						}
+						if logWriter != nil {
+							fmt.Fprint(logWriter, "\n")
+						}
+						fullOutput.WriteString("\n")
 					}
-					if logWriter != nil {
-						fmt.Fprint(logWriter, "\n")
-					}
-					fullOutput.WriteString("\n")
+					messageHasContent = false
 				}
 
 			case "result":
