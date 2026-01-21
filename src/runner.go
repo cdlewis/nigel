@@ -432,10 +432,9 @@ func (r *Runner) handleSuccess(candidate *Candidate, buildVerified bool) (bool, 
 			return false, fmt.Errorf("success command error: %w", err)
 		}
 		if !ok {
-			fmt.Println(ColorWarning("Warning: success command returned non-zero exit code"))
-		} else {
-			fmt.Println(ColorSuccess("✓ Changes committed"))
+			return false, &fatalError{msg: "success command returned non-zero exit code"}
 		}
+		fmt.Println(ColorSuccess("✓ Changes committed"))
 		r.logOutcome(OutcomeFixed, "committed")
 	} else {
 		r.logOutcome(OutcomeFixed, "no changes to commit")
@@ -465,10 +464,9 @@ func (r *Runner) handleFailure(candidate *Candidate) (bool, error) {
 					return false, fmt.Errorf("best effort commit error: %w", err)
 				}
 				if !ok {
-					fmt.Println(ColorWarning("Warning: best effort commit returned non-zero exit code"))
-				} else {
-					fmt.Println(ColorSuccess("✓ Changes committed"))
+					return false, &fatalError{msg: "best effort commit returned non-zero exit code"}
 				}
+				fmt.Println(ColorSuccess("✓ Changes committed"))
 				r.logOutcome(OutcomeBestEffort, "partial progress committed")
 			} else {
 				r.logOutcome(OutcomeNotFixed, "no changes made")
@@ -518,10 +516,9 @@ func (r *Runner) handleTimeout(candidate *Candidate) (bool, error) {
 					return false, fmt.Errorf("timeout commit error: %w", err)
 				}
 				if !ok {
-					fmt.Println(ColorWarning("Warning: timeout commit returned non-zero exit code"))
-				} else {
-					fmt.Println(ColorSuccess("✓ Changes committed"))
+					return false, &fatalError{msg: "timeout commit returned non-zero exit code"}
 				}
+				fmt.Println(ColorSuccess("✓ Changes committed"))
 				r.logOutcome(OutcomeBestEffort, "timeout - partial progress committed")
 			} else {
 				r.logOutcome(OutcomeNotFixed, "timeout - no changes made")
