@@ -52,7 +52,7 @@ type RunnerOptions struct {
 	TimeLimit     time.Duration
 	DryRun        bool
 	Verbose       bool
-	HashFilter    HashFilter
+	Partition     HashPartition
 	Timeout       time.Duration // Per-candidate timeout (overrides task.yaml)
 	ClaudeCommand string        // Claude command (overrides task.yaml)
 }
@@ -232,7 +232,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 	}
 
 	// Filter by hash if requested
-	candidates = FilterByHash(candidates, r.opts.HashFilter)
+	candidates = FilterByPartition(candidates, r.opts.Partition)
 
 	if r.opts.Verbose {
 		fmt.Printf(ColorInfo("Parsed candidates (%d total):\n"), len(candidates))
@@ -383,7 +383,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 	}
 
 	// Apply the same hash filter for consistent verification
-	newCandidates = FilterByHash(newCandidates, r.opts.HashFilter)
+	newCandidates = FilterByPartition(newCandidates, r.opts.Partition)
 
 	if r.opts.Verbose {
 		fmt.Printf(ColorInfo("Re-check parsed candidates (%d total):\n"), len(newCandidates))

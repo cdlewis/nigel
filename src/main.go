@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,8 +19,7 @@ func main() {
 	claudeCommandFlag := flag.String("claude-command", "", "Claude command to use (overrides task.yaml)")
 	dryRunFlag := flag.Bool("dry-run", false, "Print prompt without executing Claude")
 	verboseFlag := flag.Bool("verbose", false, "Print verbose output")
-	evensFlag := flag.Bool("evens", false, "Only process candidates with even MD5 hash")
-	oddsFlag := flag.Bool("odds", false, "Only process candidates with odd MD5 hash")
+	shardFlag := flag.String("shard", "", "Shard index/total (e.g. 1/4 for first of 4 workers)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: nigel <task> [options]\n")
@@ -31,12 +31,6 @@ func main() {
 	// Reorder args so flags can appear after positional args
 	args := reorderArgs(os.Args[1:])
 	flag.CommandLine.Parse(args)
-
-	// Validate mutually exclusive flags
-	if *evensFlag && *oddsFlag {
-		fmt.Fprintln(os.Stderr, ColorError("Error: --evens and --odds are mutually exclusive"))
-		os.Exit(1)
-	}
 
 	// Discover environment
 	env, err := DiscoverEnvironment()
@@ -61,12 +55,21 @@ func main() {
 
 	taskName := remaining[0]
 
-	// Determine hash filter
-	var hashFilter HashFilter
-	if *evensFlag {
-		hashFilter = HashFilterEvens
-	} else if *oddsFlag {
-		hashFilter = HashFilterOdds
+	// Parse and validate shard flag (1-based indexing: 1/N through N/N)
+	var partition HashPartition = NoFilter()
+	if *shardFlag != "" {
+		parts := strings.Split(*shardFlag, "/")
+		if len(parts) != 2 {
+			fmt.Fprintln(os.Stderr, ColorError("Error: --shard must be in format INDEX/TOTAL (e.g. 1/4)"))
+			os.Exit(1)
+		}
+		index, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+		total, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err1 != nil || err2 != nil || total < 1 || index < 1 || index > total {
+			fmt.Fprintln(os.Stderr, ColorError("Error: invalid shard values"))
+			os.Exit(1)
+		}
+		partition = HashPartition{WorkerCount: total, WorkerIndex: index - 1} // Convert to 0-based internally
 	}
 
 	// Create and run the runner
@@ -75,7 +78,7 @@ func main() {
 		TimeLimit:     *timeLimitFlag,
 		DryRun:        *dryRunFlag,
 		Verbose:       *verboseFlag,
-		HashFilter:    hashFilter,
+		Partition:     partition,
 		Timeout:       *taskTimeoutFlag,
 		ClaudeCommand: *claudeCommandFlag,
 	}
@@ -131,7 +134,8 @@ func reorderArgs(args []string) []string {
 				// Check if it's a flag that takes a value
 				switch arg {
 				case "-limit", "--limit", "-time-limit", "--time-limit",
-					"-task-timeout", "--task-timeout", "-claude-command", "--claude-command":
+					"-task-timeout", "--task-timeout", "-claude-command", "--claude-command",
+					"-shard", "--shard":
 					i++
 					flags = append(flags, args[i])
 				}

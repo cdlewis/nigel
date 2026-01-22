@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -189,39 +190,99 @@ func TestCandidateAccessors(t *testing.T) {
 	})
 }
 
-func TestFilterByHash(t *testing.T) {
+func TestFilterByPartition(t *testing.T) {
 	candidates := []Candidate{
 		{Key: "a"},
 		{Key: "b"},
 		{Key: "c"},
 		{Key: "d"},
+		{Key: "e"},
+		{Key: "f"},
+		{Key: "g"},
+		{Key: "h"},
+		{Key: "i"},
+		{Key: "j"},
 	}
 
-	t.Run("no filter returns all", func(t *testing.T) {
-		result := FilterByHash(candidates, HashFilterNone)
+	t.Run("single worker returns all", func(t *testing.T) {
+		result := FilterByPartition(candidates, HashPartition{WorkerCount: 1, WorkerIndex: 0})
 		if len(result) != len(candidates) {
 			t.Errorf("got %d candidates, want %d", len(result), len(candidates))
 		}
 	})
 
-	t.Run("evens and odds are disjoint and complete", func(t *testing.T) {
-		evens := FilterByHash(candidates, HashFilterEvens)
-		odds := FilterByHash(candidates, HashFilterOdds)
+	t.Run("worker count of 0 or less returns all", func(t *testing.T) {
+		result := FilterByPartition(candidates, HashPartition{WorkerCount: 0, WorkerIndex: 0})
+		if len(result) != len(candidates) {
+			t.Errorf("got %d candidates, want %d", len(result), len(candidates))
+		}
+	})
+
+	t.Run("2-way partitioning is disjoint and complete", func(t *testing.T) {
+		partition0 := FilterByPartition(candidates, HashPartition{WorkerCount: 2, WorkerIndex: 0})
+		partition1 := FilterByPartition(candidates, HashPartition{WorkerCount: 2, WorkerIndex: 1})
 
 		// Together they should cover all candidates
-		if len(evens)+len(odds) != len(candidates) {
-			t.Errorf("evens (%d) + odds (%d) != total (%d)", len(evens), len(odds), len(candidates))
+		if len(partition0)+len(partition1) != len(candidates) {
+			t.Errorf("partition0 (%d) + partition1 (%d) != total (%d)", len(partition0), len(partition1), len(candidates))
 		}
 
 		// They should be disjoint
-		evenKeys := make(map[string]bool)
-		for _, c := range evens {
-			evenKeys[c.Key] = true
+		keys0 := make(map[string]bool)
+		for _, c := range partition0 {
+			keys0[c.Key] = true
 		}
-		for _, c := range odds {
-			if evenKeys[c.Key] {
-				t.Errorf("key %q appears in both evens and odds", c.Key)
+		for _, c := range partition1 {
+			if keys0[c.Key] {
+				t.Errorf("key %q appears in both partitions", c.Key)
 			}
+		}
+	})
+
+	t.Run("4-way partitioning is disjoint and complete", func(t *testing.T) {
+		var partitions [][]Candidate
+		for i := 0; i < 4; i++ {
+			partitions = append(partitions, FilterByPartition(candidates, HashPartition{WorkerCount: 4, WorkerIndex: i}))
+		}
+
+		// Count total candidates across all partitions
+		total := 0
+		allKeys := make(map[string]int)
+		for i, p := range partitions {
+			total += len(p)
+			for _, c := range p {
+				allKeys[c.Key]++
+				if allKeys[c.Key] > 1 {
+					t.Errorf("key %q appears in multiple partitions (seen %d times, now in partition %d)", c.Key, allKeys[c.Key], i)
+				}
+			}
+		}
+
+		if total != len(candidates) {
+			t.Errorf("4-way partitions total %d, want %d", total, len(candidates))
+		}
+	})
+
+	t.Run("10-way partitioning works correctly", func(t *testing.T) {
+		// Create more candidates for 10-way partitioning
+		largeCandidates := make([]Candidate, 100)
+		for i := 0; i < 100; i++ {
+			largeCandidates[i] = Candidate{Key: fmt.Sprintf("candidate-%d", i)}
+		}
+
+		var partitions [][]Candidate
+		for i := 0; i < 10; i++ {
+			partitions = append(partitions, FilterByPartition(largeCandidates, HashPartition{WorkerCount: 10, WorkerIndex: i}))
+		}
+
+		// Count total candidates across all partitions
+		total := 0
+		for _, p := range partitions {
+			total += len(p)
+		}
+
+		if total != len(largeCandidates) {
+			t.Errorf("10-way partitions total %d, want %d", total, len(largeCandidates))
 		}
 	})
 }

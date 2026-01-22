@@ -77,77 +77,66 @@ func TestCandidateVerification(t *testing.T) {
 		name          string
 		candidateKey  string
 		sourceOutput  string
-		hashFilter    HashFilter
 		expectedFixed bool
 	}{
 		{
 			name:          "candidate present in JSON array - not fixed",
 			candidateKey:  "func_800BB754_ABF84",
 			sourceOutput:  `["func_800BB754_ABF84", "func_800BB66C_B2C2C"]`,
-			hashFilter:    HashFilterNone,
 			expectedFixed: false,
 		},
 		{
 			name:          "candidate absent from JSON array - fixed",
 			candidateKey:  "func_800BB754_ABF84",
 			sourceOutput:  `["func_800BB66C_B2C2C", "other_function"]`,
-			hashFilter:    HashFilterNone,
 			expectedFixed: true,
 		},
 		{
 			name:          "candidate present in newline-separated output - not fixed",
 			candidateKey:  "func_800BB754_ABF84",
 			sourceOutput:  "func_800BB754_ABF84\nfunc_800BB66C_B2C2C\n",
-			hashFilter:    HashFilterNone,
 			expectedFixed: false,
 		},
 		{
 			name:          "candidate absent from newline-separated output - fixed",
 			candidateKey:  "func_800BB754_ABF84",
 			sourceOutput:  "func_800BB66C_B2C2C\nother_function\n",
-			hashFilter:    HashFilterNone,
 			expectedFixed: true,
 		},
 		{
 			name:          "object candidates - candidate present",
 			candidateKey:  `{"file":"foo.c","line":42}`,
 			sourceOutput:  `[{"file":"foo.c","line":42},{"file":"bar.c","line":10}]`,
-			hashFilter:    HashFilterNone,
 			expectedFixed: false,
 		},
 		{
 			name:          "object candidates - candidate absent",
 			candidateKey:  `{"file":"foo.c","line":42}`,
 			sourceOutput:  `[{"file":"bar.c","line":10},{"file":"baz.c","line":99}]`,
-			hashFilter:    HashFilterNone,
 			expectedFixed: true,
 		},
 		{
 			name:          "object candidates - key order normalized",
 			candidateKey:  `{"file":"foo.c","line":42}`,
 			sourceOutput:  `[{"line":42,"file":"foo.c"},{"file":"bar.c","line":10}]`,
-			hashFilter:    HashFilterNone,
 			expectedFixed: false,
 		},
 		{
 			name:          "array candidate present in array-of-arrays source",
 			candidateKey:  `["a","b"]`,
 			sourceOutput:  `[["b","z"],["a","b"]]`,
-			hashFilter:    HashFilterNone,
 			expectedFixed: false,
 		},
 		{
 			name:          "array candidate absent from array-of-arrays source",
 			candidateKey:  `["a","b"]`,
 			sourceOutput:  `[["b","z"],["c","d"]]`,
-			hashFilter:    HashFilterNone,
 			expectedFixed: true,
 		},
 		{
 			name:          "array candidate with whitespace - compaction normalizes",
 			candidateKey:  `["a","b"]`,
 			sourceOutput:  `[["b","z"], [ "a", "b" ]]`,
-			hashFilter:    HashFilterNone,
 			expectedFixed: false,
 		},
 	}
@@ -159,7 +148,7 @@ func TestCandidateVerification(t *testing.T) {
 				t.Fatalf("ParseCandidates failed: %v", err)
 			}
 
-			candidates = FilterByHash(candidates, tt.hashFilter)
+			candidates = FilterByPartition(candidates, NoFilter())
 
 			fixed := !containsKey(candidates, tt.candidateKey)
 			if fixed != tt.expectedFixed {
@@ -170,9 +159,9 @@ func TestCandidateVerification(t *testing.T) {
 	}
 }
 
-func TestCandidateVerificationWithHashFilter(t *testing.T) {
-	// Test that hash filtering is applied consistently
-	// This verifies the fix for the hash filter inconsistency bug
+func TestCandidateVerificationWithPartition(t *testing.T) {
+	// Test that hash partitioning is applied consistently
+	// This verifies that partitioning works correctly across multiple workers
 	sourceOutput := `["candidate1", "candidate2", "candidate3", "candidate4", "candidate5"]`
 
 	candidates, err := ParseCandidates([]byte(sourceOutput))
@@ -180,36 +169,36 @@ func TestCandidateVerificationWithHashFilter(t *testing.T) {
 		t.Fatalf("ParseCandidates failed: %v", err)
 	}
 
-	// Find a candidate that will be filtered out by evens filter
+	// Find a candidate that will be filtered out by partition 0
 	var filteredOutKey string
 	for _, c := range candidates {
-		evensFiltered := FilterByHash([]Candidate{c}, HashFilterEvens)
-		if len(evensFiltered) == 0 {
+		partition0Filtered := FilterByPartition([]Candidate{c}, HashPartition{WorkerCount: 2, WorkerIndex: 0})
+		if len(partition0Filtered) == 0 {
 			filteredOutKey = c.Key
 			break
 		}
 	}
 
 	if filteredOutKey == "" {
-		t.Skip("Could not find a candidate that gets filtered by evens (need more candidates)")
+		t.Skip("Could not find a candidate that gets filtered by partition 0 (need more candidates)")
 	}
 
-	// With evens filter, the filtered-out candidate should appear "fixed" (not found)
-	evensCandidates := FilterByHash(candidates, HashFilterEvens)
-	fixedWithEvens := !containsKey(evensCandidates, filteredOutKey)
-	if !fixedWithEvens {
-		t.Errorf("Candidate %q should be filtered out by evens filter", filteredOutKey)
+	// With partition 0, the filtered-out candidate should appear "fixed" (not found)
+	partition0Candidates := FilterByPartition(candidates, HashPartition{WorkerCount: 2, WorkerIndex: 0})
+	fixedWithPartition0 := !containsKey(partition0Candidates, filteredOutKey)
+	if !fixedWithPartition0 {
+		t.Errorf("Candidate %q should be filtered out by partition 0", filteredOutKey)
 	}
 
-	// With odds filter, the same candidate should be present (not "fixed")
-	oddsCandidates := FilterByHash(candidates, HashFilterOdds)
-	fixedWithOdds := !containsKey(oddsCandidates, filteredOutKey)
-	if fixedWithOdds {
-		t.Errorf("Candidate %q should be present in odds filter", filteredOutKey)
+	// With partition 1, the same candidate should be present (not "fixed")
+	partition1Candidates := FilterByPartition(candidates, HashPartition{WorkerCount: 2, WorkerIndex: 1})
+	fixedWithPartition1 := !containsKey(partition1Candidates, filteredOutKey)
+	if fixedWithPartition1 {
+		t.Errorf("Candidate %q should be present in partition 1", filteredOutKey)
 	}
 
-	// With no filter, candidate should be present
-	noFilterCandidates := FilterByHash(candidates, HashFilterNone)
+	// With no filter (single worker), candidate should be present
+	noFilterCandidates := FilterByPartition(candidates, NoFilter())
 	fixedWithNoFilter := !containsKey(noFilterCandidates, filteredOutKey)
 	if fixedWithNoFilter {
 		t.Errorf("Candidate %q should be present with no filter", filteredOutKey)

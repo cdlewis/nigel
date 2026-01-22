@@ -97,8 +97,10 @@ nigel mytask --limit 10
 nigel mytask --dry-run --verbose
 
 # Distribute work across parallel runners
-nigel mytask --evens   # Process candidates with even MD5 hash
-nigel mytask --odds    # Process candidates with odd MD5 hash
+nigel mytask --shard 1/4  # Terminal 1 (first of 4 workers)
+nigel mytask --shard 2/4  # Terminal 2 (second of 4 workers)
+nigel mytask --shard 3/4  # Terminal 3
+nigel mytask --shard 4/4  # Terminal 4
 
 # Override task settings temporarily
 nigel mytask --task-timeout 5m      # Per-candidate timeout
@@ -114,8 +116,7 @@ nigel mytask --claude-command "~/custom/claude"
 | `--claude-command`  | Claude command to use (overrides task.yaml)         |
 | `--dry-run`         | Print prompts without executing Claude              |
 | `--verbose`         | Print full prompt content and show command overrides |
-| `--evens`           | Only process candidates with even hash              |
-| `--odds`            | Only process candidates with odd hash               |
+| `--shard I/N`       | Shard index/total for parallel processing           |
 
 ## Configuration
 

@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/md5"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,13 +20,16 @@ type Candidate struct {
 	Data json.RawMessage // Raw JSON data (string, array, or map)
 }
 
-type HashFilter int
+// HashPartition specifies which partition of candidates a worker should process
+type HashPartition struct {
+	WorkerCount int // Total number of parallel workers (N)
+	WorkerIndex int // This worker's index (0 to N-1)
+}
 
-const (
-	HashFilterNone HashFilter = iota
-	HashFilterEvens
-	HashFilterOdds
-)
+// NoFilter returns a HashPartition that processes all candidates
+func NoFilter() HashPartition {
+	return HashPartition{WorkerCount: 1, WorkerIndex: 0}
+}
 
 // ParseCandidates parses the output from a candidate source.
 // Supports JSON arrays like ["a", "b"], [["a", "x"], ["b", "y"]], or [{"file": "a"}, {"file": "b"}]
@@ -254,19 +257,18 @@ func rawToString(raw json.RawMessage) string {
 	return string(raw)
 }
 
-// FilterByHash filters candidates by MD5 hash parity.
-func FilterByHash(candidates []Candidate, filter HashFilter) []Candidate {
-	if filter == HashFilterNone {
+// FilterByPartition filters candidates by MD5 hash modulo.
+func FilterByPartition(candidates []Candidate, partition HashPartition) []Candidate {
+	if partition.WorkerCount <= 1 {
 		return candidates
 	}
 
-	filtered := make([]Candidate, 0)
+	filtered := make([]Candidate, 0, len(candidates)/partition.WorkerCount)
 	for _, c := range candidates {
 		hash := md5.Sum([]byte(c.Key))
-		hashInt := new(big.Int).SetBytes(hash[:])
-		isEven := hashInt.Bit(0) == 0
+		hashUint64 := binary.LittleEndian.Uint64(hash[:8])
 
-		if (filter == HashFilterEvens && isEven) || (filter == HashFilterOdds && !isEven) {
+		if int(hashUint64%uint64(partition.WorkerCount)) == partition.WorkerIndex {
 			filtered = append(filtered, c)
 		}
 	}
