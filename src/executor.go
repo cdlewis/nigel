@@ -269,9 +269,21 @@ var (
 	inputBareRe = regexp.MustCompile(`\$INPUT\b`)
 )
 
+// interpolationError is returned when $INPUT variable type doesn't match the operation.
+type interpolationError struct {
+	Variable string // The variable that caused the error (e.g., "$INPUT[0]")
+	Op       string // The operation being attempted (e.g., "array index")
+	Actual   string // The actual type (e.g., "string", "map", "array")
+}
+
+func (e *interpolationError) Error() string {
+	return fmt.Sprintf("prompt interpolation error: cannot use %s (requires array) on %s candidate", e.Variable, e.Actual)
+}
+
 // InterpolatePrompt replaces template variables with candidate values.
 // Supports: $INPUT, $INPUT[n], $INPUT[n:], $INPUT["key"], $TASK_ID
-func InterpolatePrompt(template string, candidate *Candidate, taskID int64) string {
+// Returns an error if the input type doesn't match the operation (e.g., using array index on a string).
+func InterpolatePrompt(template string, candidate *Candidate, taskID int64) (string, error) {
 	result := template
 
 	// Replace $TASK_ID - unique task identifier
@@ -290,7 +302,28 @@ func InterpolatePrompt(template string, candidate *Candidate, taskID int64) stri
 		return ""
 	})
 
+	// Check for type mismatches BEFORE replacement
+	// If we find $INPUT[n:] or $INPUT[n] but the candidate is not an array, error
+
 	// Replace $INPUT[n:] - slice from index
+	matches := inputSliceRe.FindAllStringSubmatch(result, -1)
+	for _, match := range matches {
+		if len(match) >= 2 {
+			if !candidate.IsArray() {
+				// Determine the actual type for the error message
+				actualType := "string"
+				if candidate.IsMap() {
+					actualType = "map"
+				}
+				return "", &interpolationError{
+					Variable: match[0],
+					Op:       "slice",
+					Actual:   actualType,
+				}
+			}
+		}
+	}
+
 	result = inputSliceRe.ReplaceAllStringFunc(result, func(match string) string {
 		submatch := inputSliceRe.FindStringSubmatch(match)
 		if len(submatch) < 2 {
@@ -304,6 +337,24 @@ func InterpolatePrompt(template string, candidate *Candidate, taskID int64) stri
 	})
 
 	// Replace $INPUT[n] - array index access
+	matches = inputIndexRe.FindAllStringSubmatch(result, -1)
+	for _, match := range matches {
+		if len(match) >= 2 {
+			if !candidate.IsArray() {
+				// Determine the actual type for the error message
+				actualType := "string"
+				if candidate.IsMap() {
+					actualType = "map"
+				}
+				return "", &interpolationError{
+					Variable: match[0],
+					Op:       "array index",
+					Actual:   actualType,
+				}
+			}
+		}
+	}
+
 	result = inputIndexRe.ReplaceAllStringFunc(result, func(match string) string {
 		submatch := inputIndexRe.FindStringSubmatch(match)
 		if len(submatch) < 2 {
@@ -321,7 +372,7 @@ func InterpolatePrompt(template string, candidate *Candidate, taskID int64) stri
 		return candidate.String()
 	})
 
-	return result
+	return result, nil
 }
 
 // shellQuote wraps a value in single quotes for safe shell interpolation.

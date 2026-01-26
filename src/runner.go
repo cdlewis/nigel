@@ -570,7 +570,7 @@ func (r *Runner) getPrompt(candidate *Candidate) (string, error) {
 		template = r.task.Prompt
 	}
 
-	return InterpolatePrompt(template, candidate, r.env.TaskID), nil
+	return InterpolatePrompt(template, candidate, r.env.TaskID)
 }
 
 func (r *Runner) runVerify() bool {

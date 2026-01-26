@@ -20,7 +20,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT with single string", func(t *testing.T) {
 		c := makeCandidate(`"hello"`)
-		result := InterpolatePrompt("Say: $INPUT", c, testTaskID)
+		result, err := InterpolatePrompt("Say: $INPUT", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "Say: hello" {
 			t.Errorf("got %q, want %q", result, "Say: hello")
 		}
@@ -28,7 +31,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT with single-item array unwraps", func(t *testing.T) {
 		c := makeCandidate(`["only_item"]`)
-		result := InterpolatePrompt("Value: $INPUT", c, testTaskID)
+		result, err := InterpolatePrompt("Value: $INPUT", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "Value: only_item" {
 			t.Errorf("got %q, want %q", result, "Value: only_item")
 		}
@@ -36,7 +42,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT with multi-item array returns JSON", func(t *testing.T) {
 		c := makeCandidate(`["a", "b", "c"]`)
-		result := InterpolatePrompt("Values: $INPUT", c, testTaskID)
+		result, err := InterpolatePrompt("Values: $INPUT", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != `Values: ["a", "b", "c"]` {
 			t.Errorf("got %q, want %q", result, `Values: ["a", "b", "c"]`)
 		}
@@ -44,7 +53,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[0] array index", func(t *testing.T) {
 		c := makeCandidate(`["first", "second", "third"]`)
-		result := InterpolatePrompt("First: $INPUT[0]", c, testTaskID)
+		result, err := InterpolatePrompt("First: $INPUT[0]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "First: first" {
 			t.Errorf("got %q, want %q", result, "First: first")
 		}
@@ -52,7 +64,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[1] array index", func(t *testing.T) {
 		c := makeCandidate(`["first", "second", "third"]`)
-		result := InterpolatePrompt("Second: $INPUT[1]", c, testTaskID)
+		result, err := InterpolatePrompt("Second: $INPUT[1]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "Second: second" {
 			t.Errorf("got %q, want %q", result, "Second: second")
 		}
@@ -60,7 +75,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[n] out of bounds returns empty", func(t *testing.T) {
 		c := makeCandidate(`["only"]`)
-		result := InterpolatePrompt("Missing: $INPUT[5]", c, testTaskID)
+		result, err := InterpolatePrompt("Missing: $INPUT[5]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "Missing: " {
 			t.Errorf("got %q, want %q", result, "Missing: ")
 		}
@@ -68,7 +86,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[1:] slice from index", func(t *testing.T) {
 		c := makeCandidate(`["a", "b", "c", "d"]`)
-		result := InterpolatePrompt("Rest: $INPUT[1:]", c, testTaskID)
+		result, err := InterpolatePrompt("Rest: $INPUT[1:]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != `Rest: ["b","c","d"]` {
 			t.Errorf("got %q, want %q", result, `Rest: ["b","c","d"]`)
 		}
@@ -76,7 +97,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[n:] slice out of bounds returns empty array", func(t *testing.T) {
 		c := makeCandidate(`["a"]`)
-		result := InterpolatePrompt("Rest: $INPUT[5:]", c, testTaskID)
+		result, err := InterpolatePrompt("Rest: $INPUT[5:]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "Rest: []" {
 			t.Errorf("got %q, want %q", result, "Rest: []")
 		}
@@ -84,7 +108,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[\"key\"] map access", func(t *testing.T) {
 		c := makeCandidate(`{"file": "test.go", "line": 42}`)
-		result := InterpolatePrompt("File: $INPUT[\"file\"], Line: $INPUT[\"line\"]", c, testTaskID)
+		result, err := InterpolatePrompt("File: $INPUT[\"file\"], Line: $INPUT[\"line\"]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "File: test.go, Line: 42" {
 			t.Errorf("got %q, want %q", result, "File: test.go, Line: 42")
 		}
@@ -92,7 +119,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT[\"key\"] missing key returns empty", func(t *testing.T) {
 		c := makeCandidate(`{"file": "test.go"}`)
-		result := InterpolatePrompt("Missing: $INPUT[\"nope\"]", c, testTaskID)
+		result, err := InterpolatePrompt("Missing: $INPUT[\"nope\"]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "Missing: " {
 			t.Errorf("got %q, want %q", result, "Missing: ")
 		}
@@ -100,7 +130,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("mixed syntax in same template", func(t *testing.T) {
 		c := makeCandidate(`["a", "b", "c"]`)
-		result := InterpolatePrompt("All: $INPUT, First: $INPUT[0], Rest: $INPUT[1:]", c, testTaskID)
+		result, err := InterpolatePrompt("All: $INPUT, First: $INPUT[0], Rest: $INPUT[1:]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		expected := `All: ["a", "b", "c"], First: a, Rest: ["b","c"]`
 		if result != expected {
 			t.Errorf("got %q, want %q", result, expected)
@@ -109,7 +142,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$INPUT does not match $INPUTX", func(t *testing.T) {
 		c := makeCandidate(`"test"`)
-		result := InterpolatePrompt("$INPUTX $INPUT", c, testTaskID)
+		result, err := InterpolatePrompt("$INPUTX $INPUT", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "$INPUTX test" {
 			t.Errorf("got %q, want %q", result, "$INPUTX test")
 		}
@@ -117,7 +153,10 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$TASK_ID interpolation", func(t *testing.T) {
 		c := makeCandidate(`"test"`)
-		result := InterpolatePrompt("Task ID: $TASK_ID", c, testTaskID)
+		result, err := InterpolatePrompt("Task ID: $TASK_ID", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "Task ID: 12345" {
 			t.Errorf("got %q, want %q", result, "Task ID: 12345")
 		}
@@ -125,9 +164,105 @@ func TestInterpolatePrompt(t *testing.T) {
 
 	t.Run("$TASK_ID with other variables", func(t *testing.T) {
 		c := makeCandidate(`"hello"`)
-		result := InterpolatePrompt("Task: $TASK_ID, Input: $INPUT", c, testTaskID)
+		result, err := InterpolatePrompt("Task: $TASK_ID, Input: $INPUT", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		if result != "Task: 12345, Input: hello" {
 			t.Errorf("got %q, want %q", result, "Task: 12345, Input: hello")
+		}
+	})
+}
+
+func TestInterpolatePromptValidationErrors(t *testing.T) {
+	const testTaskID = 12345
+
+	// Helper to create a candidate from JSON
+	makeCandidate := func(jsonStr string) *Candidate {
+		candidates, _ := ParseCandidates([]byte("[" + jsonStr + "]"))
+		return &candidates[0]
+	}
+
+	t.Run("array index on string returns error", func(t *testing.T) {
+		c := makeCandidate(`"hello"`)
+		_, err := InterpolatePrompt("First: $INPUT[0]", c, testTaskID)
+		if err == nil {
+			t.Errorf("expected error for array index on string, got nil")
+		}
+		if ierr, ok := err.(*interpolationError); ok {
+			if ierr.Variable != "$INPUT[0]" || ierr.Actual != "string" {
+				t.Errorf("got wrong error details: %v", ierr)
+			}
+		} else {
+			t.Errorf("expected interpolationError, got %T", err)
+		}
+	})
+
+	t.Run("slice on string returns error", func(t *testing.T) {
+		c := makeCandidate(`"hello"`)
+		_, err := InterpolatePrompt("Rest: $INPUT[1:]", c, testTaskID)
+		if err == nil {
+			t.Errorf("expected error for slice on string, got nil")
+		}
+		if ierr, ok := err.(*interpolationError); ok {
+			if ierr.Variable != "$INPUT[1:]" || ierr.Actual != "string" {
+				t.Errorf("got wrong error details: %v", ierr)
+			}
+		} else {
+			t.Errorf("expected interpolationError, got %T", err)
+		}
+	})
+
+	t.Run("array index on map returns error", func(t *testing.T) {
+		c := makeCandidate(`{"file": "test.go"}`)
+		_, err := InterpolatePrompt("First: $INPUT[0]", c, testTaskID)
+		if err == nil {
+			t.Errorf("expected error for array index on map, got nil")
+		}
+		if ierr, ok := err.(*interpolationError); ok {
+			if ierr.Variable != "$INPUT[0]" || ierr.Actual != "map" {
+				t.Errorf("got wrong error details: %v", ierr)
+			}
+		} else {
+			t.Errorf("expected interpolationError, got %T", err)
+		}
+	})
+
+	t.Run("slice on map returns error", func(t *testing.T) {
+		c := makeCandidate(`{"file": "test.go"}`)
+		_, err := InterpolatePrompt("Rest: $INPUT[1:]", c, testTaskID)
+		if err == nil {
+			t.Errorf("expected error for slice on map, got nil")
+		}
+		if ierr, ok := err.(*interpolationError); ok {
+			if ierr.Variable != "$INPUT[1:]" || ierr.Actual != "map" {
+				t.Errorf("got wrong error details: %v", ierr)
+			}
+		} else {
+			t.Errorf("expected interpolationError, got %T", err)
+		}
+	})
+
+	t.Run("key access on array returns empty (not an error - key may exist)", func(t *testing.T) {
+		c := makeCandidate(`["a", "b", "c"]`)
+		result, err := InterpolatePrompt("File: $INPUT[\"file\"]", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error for key access: %v", err)
+		}
+		// Key access on non-map returns empty string (key not found behavior)
+		if result != "File: " {
+			t.Errorf("got %q, want %q", result, "File: ")
+		}
+	})
+
+	t.Run("bare $INPUT on any type works", func(t *testing.T) {
+		c := makeCandidate(`"hello"`)
+		result, err := InterpolatePrompt("Value: $INPUT", c, testTaskID)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if result != "Value: hello" {
+			t.Errorf("got %q, want %q", result, "Value: hello")
 		}
 	})
 }
