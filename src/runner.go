@@ -354,6 +354,8 @@ func (r *Runner) runIteration() (done bool, err error) {
 	if flushTimer != nil {
 		flushTimer.Stop()
 	}
+	// Ensure all buffered content is flushed BEFORE writing reset
+	stdoutBuf.Flush()
 	stdoutBuf.WriteString(colorReset)
 	stdoutBuf.Flush()
 
