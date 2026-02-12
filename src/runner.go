@@ -117,8 +117,16 @@ func (r *Runner) setExecutor(exec CommandExecutor) {
 
 func (r *Runner) Run() error {
 	// Verify claude command exists (skip in dry-run)
+	// Use the same precedence as execution: CLI override > task-level > global
 	if !r.opts.DryRun {
-		if err := CheckClaudeCommand(r.env.Config.ClaudeCommand); err != nil {
+		claudeCmd := r.opts.ClaudeCommand
+		if claudeCmd == "" {
+			claudeCmd = r.task.ClaudeCommand
+		}
+		if claudeCmd == "" {
+			claudeCmd = r.env.Config.ClaudeCommand
+		}
+		if err := CheckClaudeCommand(claudeCmd); err != nil {
 			return err
 		}
 	}
