@@ -17,6 +17,7 @@ func main() {
 	timeLimitFlag := flag.Duration("time-limit", 0*time.Second, "Maximum duration (e.g. 1h30m, 30m, 5s) (0 = unlimited)")
 	taskTimeoutFlag := flag.Duration("task-timeout", 0*time.Second, "Per-candidate timeout (e.g. 5m, 30s) (overrides task.yaml)")
 	claudeCommandFlag := flag.String("claude-command", "", "Claude command to use (overrides task.yaml)")
+	claudeFlagsFlag := flag.String("claude-flags", "", "Additional Claude flags (overrides task.yaml)")
 	dryRunFlag := flag.Bool("dry-run", false, "Print prompt without executing Claude")
 	verboseFlag := flag.Bool("verbose", false, "Print verbose output")
 	shardFlag := flag.String("shard", "", "Shard index/total (e.g. 1/4 for first of 4 workers)")
@@ -81,6 +82,7 @@ func main() {
 		Partition:     partition,
 		Timeout:       *taskTimeoutFlag,
 		ClaudeCommand: *claudeCommandFlag,
+		ClaudeFlags:   *claudeFlagsFlag,
 	}
 
 	runner, err := NewRunner(env, taskName, opts)
@@ -135,6 +137,7 @@ func reorderArgs(args []string) []string {
 				switch arg {
 				case "-limit", "--limit", "-time-limit", "--time-limit",
 					"-task-timeout", "--task-timeout", "-claude-command", "--claude-command",
+					"-claude-flags", "--claude-flags",
 					"-shard", "--shard":
 					i++
 					flags = append(flags, args[i])

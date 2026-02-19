@@ -100,6 +100,7 @@ type RunnerOptions struct {
 	Partition     HashPartition
 	Timeout       time.Duration // Per-candidate timeout (overrides task.yaml)
 	ClaudeCommand string        // Claude command (overrides task.yaml)
+	ClaudeFlags   string        // Additional Claude flags (overrides task.yaml)
 }
 
 type Runner struct {
@@ -344,7 +345,14 @@ func (r *Runner) runIteration() (done bool, err error) {
 		r.claudeLogger.StartEntry(prompt)
 	}
 
-	claudeFlags := r.task.ClaudeFlags
+	// Determine claude flags: CLI override > task-level
+	claudeFlags := r.opts.ClaudeFlags
+	if claudeFlags == "" {
+		claudeFlags = r.task.ClaudeFlags
+	}
+	if claudeFlags != "" && r.opts.Verbose {
+		fmt.Printf(ColorInfo("Using claude_flags: %s\n"), claudeFlags)
+	}
 
 	// Determine claude command: CLI override > task-level > global
 	claudeCmd := r.opts.ClaudeCommand
