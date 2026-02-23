@@ -508,7 +508,7 @@ func (r *Runner) handleSuccess(candidate *Candidate, buildVerified bool) (bool, 
 	}
 
 	if hasChanges {
-		successCmd := InterpolateCommand(r.env.Config.SuccessCommand, candidate, r.task.Name)
+		successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
 		fmt.Println(ColorInfo("Committing changes..."))
 		ok, err := r.executor.Run(successCmd, r.env.ProjectDir)
 		if err != nil {
@@ -539,7 +539,7 @@ func (r *Runner) handleFailure(candidate *Candidate) (bool, error) {
 
 			if hasChanges {
 				fmt.Println(ColorInfo("Committing partial progress..."))
-				successCmd := InterpolateCommand(r.env.Config.SuccessCommand, candidate, r.task.Name)
+				successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
 				// Modify message for best effort
 				successCmd = replaceBestEffort(successCmd, candidate.Key)
 				ok, err := r.executor.Run(successCmd, r.env.ProjectDir)
@@ -592,7 +592,7 @@ func (r *Runner) handleTimeout(candidate *Candidate) (bool, error) {
 
 			if hasChanges {
 				fmt.Println(ColorInfo("Committing partial progress after timeout..."))
-				successCmd := InterpolateCommand(r.env.Config.SuccessCommand, candidate, r.task.Name)
+				successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
 				successCmd = replaceBestEffort(successCmd, candidate.Key)
 				ok, err := r.executor.Run(successCmd, r.env.ProjectDir)
 				if err != nil {
@@ -770,4 +770,12 @@ func replaceBestEffort(cmd, candidate string) string {
 	// Simple heuristic: if it says "fix $CANDIDATE", change to "best effort $CANDIDATE"
 	// This handles the common case of commit messages
 	return cmd
+}
+
+func (r *Runner) getSuccessCommand() string {
+	// Task-level > global config
+	if r.task.SuccessCommand != "" {
+		return r.task.SuccessCommand
+	}
+	return r.env.Config.SuccessCommand
 }
