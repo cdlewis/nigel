@@ -21,6 +21,7 @@ func main() {
 	dryRunFlag := flag.Bool("dry-run", false, "Print prompt without executing Claude")
 	verboseFlag := flag.Bool("verbose", false, "Print verbose output")
 	shardFlag := flag.String("shard", "", "Shard index/total (e.g. 1/4 for first of 4 workers)")
+	offPeakOnlyFlag := flag.Bool("off-peak-only", false, "Only run during off-peak hours (pauses during 8AM-2PM ET on weekdays)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: nigel <task> [options]\n")
@@ -83,6 +84,7 @@ func main() {
 		Timeout:       *taskTimeoutFlag,
 		ClaudeCommand: *claudeCommandFlag,
 		ClaudeFlags:   *claudeFlagsFlag,
+		OffPeakOnly:   *offPeakOnlyFlag,
 	}
 
 	runner, err := NewRunner(env, taskName, opts)
@@ -138,7 +140,8 @@ func reorderArgs(args []string) []string {
 				case "-limit", "--limit", "-time-limit", "--time-limit",
 					"-task-timeout", "--task-timeout", "-claude-command", "--claude-command",
 					"-claude-flags", "--claude-flags",
-					"-shard", "--shard":
+					"-shard", "--shard",
+					"-off-peak-only", "--off-peak-only":
 					i++
 					flags = append(flags, args[i])
 				}
