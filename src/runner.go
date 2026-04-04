@@ -568,15 +568,23 @@ func (r *Runner) handleSuccess(candidate *Candidate, buildVerified bool) (bool, 
 		return false, nil
 	}
 
-	// Commit changes if there are any
+	// Commit changes and run success command
 	hasChanges, err := r.executor.HasUncommittedChanges(r.env.ProjectDir)
 	if err != nil {
 		return false, fmt.Errorf("failed to check for changes: %w", err)
 	}
 
-	if hasChanges {
-		successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
-		fmt.Println(ColorInfo("Committing changes..."))
+	successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
+
+	if shouldSkipSuccessCommand(successCmd, hasChanges) {
+		fmt.Println(ColorInfo("No changes to commit, skipping git operation"))
+		r.logOutcome(OutcomeFixed, "no changes to commit")
+	} else {
+		if hasChanges {
+			fmt.Println(ColorInfo("Committing changes..."))
+		} else {
+			fmt.Println(ColorInfo("Running success command..."))
+		}
 		ok, err := r.executor.Run(successCmd, r.env.ProjectDir)
 		if err != nil {
 			return false, fmt.Errorf("success command error: %w", err)
@@ -584,10 +592,8 @@ func (r *Runner) handleSuccess(candidate *Candidate, buildVerified bool) (bool, 
 		if !ok {
 			return false, &fatalError{msg: "success command returned non-zero exit code"}
 		}
-		fmt.Println(ColorSuccess("✓ Changes committed"))
-		r.logOutcome(OutcomeFixed, "committed")
-	} else {
-		r.logOutcome(OutcomeFixed, "no changes to commit")
+		fmt.Println(ColorSuccess("✓ Success"))
+		r.logOutcome(OutcomeFixed, "success command executed")
 	}
 
 	return false, nil
@@ -604,11 +610,19 @@ func (r *Runner) handleFailure(candidate *Candidate) (bool, error) {
 				return false, fmt.Errorf("failed to check for changes: %w", err)
 			}
 
-			if hasChanges {
-				fmt.Println(ColorInfo("Committing partial progress..."))
-				successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
-				// Modify message for best effort
-				successCmd = replaceBestEffort(successCmd, candidate.Key)
+			successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
+			// Modify message for best effort
+			successCmd = replaceBestEffort(successCmd, candidate.Key)
+
+			if shouldSkipSuccessCommand(successCmd, hasChanges) {
+				fmt.Println(ColorInfo("No changes to commit, skipping git operation"))
+				r.logOutcome(OutcomeBestEffort, "no changes made")
+			} else {
+				if hasChanges {
+					fmt.Println(ColorInfo("Committing partial progress..."))
+				} else {
+					fmt.Println(ColorInfo("Running success command..."))
+				}
 				ok, err := r.executor.Run(successCmd, r.env.ProjectDir)
 				if err != nil {
 					return false, fmt.Errorf("best effort commit error: %w", err)
@@ -616,10 +630,8 @@ func (r *Runner) handleFailure(candidate *Candidate) (bool, error) {
 				if !ok {
 					return false, &fatalError{msg: "best effort commit returned non-zero exit code"}
 				}
-				fmt.Println(ColorSuccess("✓ Changes committed"))
-				r.logOutcome(OutcomeBestEffort, "partial progress committed")
-			} else {
-				r.logOutcome(OutcomeNotFixed, "no changes made")
+				fmt.Println(ColorSuccess("✓ Success"))
+				r.logOutcome(OutcomeBestEffort, "success command executed")
 			}
 		} else {
 			// Build failed, reset
@@ -657,10 +669,18 @@ func (r *Runner) handleTimeout(candidate *Candidate) (bool, error) {
 				return false, fmt.Errorf("failed to check for changes: %w", err)
 			}
 
-			if hasChanges {
-				fmt.Println(ColorInfo("Committing partial progress after timeout..."))
-				successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
-				successCmd = replaceBestEffort(successCmd, candidate.Key)
+			successCmd := InterpolateCommand(r.getSuccessCommand(), candidate, r.task.Name)
+			successCmd = replaceBestEffort(successCmd, candidate.Key)
+
+			if shouldSkipSuccessCommand(successCmd, hasChanges) {
+				fmt.Println(ColorInfo("No changes to commit, skipping git operation"))
+				r.logOutcome(OutcomeBestEffort, "timeout - no changes made")
+			} else {
+				if hasChanges {
+					fmt.Println(ColorInfo("Committing partial progress after timeout..."))
+				} else {
+					fmt.Println(ColorInfo("Running success command..."))
+				}
 				ok, err := r.executor.Run(successCmd, r.env.ProjectDir)
 				if err != nil {
 					return false, fmt.Errorf("timeout commit error: %w", err)
@@ -668,10 +688,8 @@ func (r *Runner) handleTimeout(candidate *Candidate) (bool, error) {
 				if !ok {
 					return false, &fatalError{msg: "timeout commit returned non-zero exit code"}
 				}
-				fmt.Println(ColorSuccess("✓ Changes committed"))
-				r.logOutcome(OutcomeBestEffort, "timeout - partial progress committed")
-			} else {
-				r.logOutcome(OutcomeNotFixed, "timeout - no changes made")
+				fmt.Println(ColorSuccess("✓ Success"))
+				r.logOutcome(OutcomeBestEffort, "timeout - success command executed")
 			}
 		} else {
 			// Build failed, reset

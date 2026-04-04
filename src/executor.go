@@ -390,6 +390,23 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
+// shouldSkipSuccessCommand determines if a command should be skipped based on
+// whether there are changes and what type of command it is.
+// Returns true if the command should be skipped.
+func shouldSkipSuccessCommand(cmd string, hasChanges bool) bool {
+    // Always run if there are changes
+    if hasChanges {
+        return false
+    }
+
+    // When there are no changes, skip git commit operations
+    // to avoid "nothing to commit" errors
+    lowerCmd := strings.ToLower(cmd)
+    return strings.Contains(lowerCmd, "git commit") ||
+        strings.Contains(lowerCmd, "git merge") ||
+        strings.Contains(lowerCmd, "git rebase")
+}
+
 // InterpolateCommand replaces template variables in commands.
 // Supports: $CANDIDATE, $TASK_NAME
 // $CANDIDATE is shell-quoted to safely handle special characters.
