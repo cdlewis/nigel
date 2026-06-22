@@ -61,6 +61,94 @@ func TestCalculateBackoff(t *testing.T) {
 	}
 }
 
+func TestPeakSchedules(t *testing.T) {
+	eastern, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("failed to load eastern timezone: %v", err)
+	}
+	china, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatalf("failed to load china timezone: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		at         time.Time
+		onPeak     bool
+		wait       time.Duration
+		checkPeak  func(time.Time) bool
+		checkUntil func(time.Time) time.Duration
+	}{
+		{
+			name:       "eastern weekday before peak",
+			at:         time.Date(2026, 6, 22, 7, 59, 0, 0, eastern),
+			onPeak:     false,
+			wait:       0,
+			checkPeak:  isOnPeak,
+			checkUntil: timeUntilOffPeak,
+		},
+		{
+			name:       "eastern weekday peak starts at 8am",
+			at:         time.Date(2026, 6, 22, 8, 0, 0, 0, eastern),
+			onPeak:     true,
+			wait:       6 * time.Hour,
+			checkPeak:  isOnPeak,
+			checkUntil: timeUntilOffPeak,
+		},
+		{
+			name:       "eastern weekday peak ends at 2pm",
+			at:         time.Date(2026, 6, 22, 14, 0, 0, 0, eastern),
+			onPeak:     false,
+			wait:       0,
+			checkPeak:  isOnPeak,
+			checkUntil: timeUntilOffPeak,
+		},
+		{
+			name:       "eastern weekend is off peak",
+			at:         time.Date(2026, 6, 27, 9, 0, 0, 0, eastern),
+			onPeak:     false,
+			wait:       0,
+			checkPeak:  isOnPeak,
+			checkUntil: timeUntilOffPeak,
+		},
+		{
+			name:       "china peak starts at 14",
+			at:         time.Date(2026, 6, 22, 14, 0, 0, 0, china),
+			onPeak:     true,
+			wait:       4 * time.Hour,
+			checkPeak:  isChinaOnPeak,
+			checkUntil: timeUntilChinaOffPeak,
+		},
+		{
+			name:       "china peak applies on weekends",
+			at:         time.Date(2026, 6, 27, 16, 30, 0, 0, china),
+			onPeak:     true,
+			wait:       90 * time.Minute,
+			checkPeak:  isChinaOnPeak,
+			checkUntil: timeUntilChinaOffPeak,
+		},
+		{
+			name:       "china peak ends at 18",
+			at:         time.Date(2026, 6, 22, 18, 0, 0, 0, china),
+			onPeak:     false,
+			wait:       0,
+			checkPeak:  isChinaOnPeak,
+			checkUntil: timeUntilChinaOffPeak,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.checkPeak(tt.at); got != tt.onPeak {
+				t.Errorf("peak check = %v, want %v", got, tt.onPeak)
+			}
+			if got := tt.checkUntil(tt.at); got != tt.wait {
+				t.Errorf("time until off peak = %v, want %v", got, tt.wait)
+			}
+		})
+	}
+}
+
 func TestRateLimitError(t *testing.T) {
 	err := &rateLimitError{msg: "test rate limit"}
 
@@ -286,9 +374,9 @@ func TestHandleSuccess_CommitFailureIsFatal(t *testing.T) {
 		},
 		Tasks: map[string]Task{
 			"test-task": {
-				Name:           "test-task",
-				Dir:            taskDir,
-				Prompt:         "test prompt",
+				Name:             "test-task",
+				Dir:              taskDir,
+				Prompt:           "test prompt",
 				AcceptBestEffort: false,
 			},
 		},
@@ -393,9 +481,9 @@ func TestHandleFailure_BestEffortCommitFailureIsFatal(t *testing.T) {
 		},
 		Tasks: map[string]Task{
 			"test-task": {
-				Name:           "test-task",
-				Dir:            taskDir,
-				Prompt:         "test prompt",
+				Name:             "test-task",
+				Dir:              taskDir,
+				Prompt:           "test prompt",
 				AcceptBestEffort: true,
 			},
 		},
@@ -453,9 +541,9 @@ func TestHandleTimeout_CommitFailureIsFatal(t *testing.T) {
 		},
 		Tasks: map[string]Task{
 			"test-task": {
-				Name:           "test-task",
-				Dir:            taskDir,
-				Prompt:         "test prompt",
+				Name:             "test-task",
+				Dir:              taskDir,
+				Prompt:           "test prompt",
 				AcceptBestEffort: true,
 			},
 		},

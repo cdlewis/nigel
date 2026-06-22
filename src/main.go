@@ -22,6 +22,7 @@ func main() {
 	verboseFlag := flag.Bool("verbose", false, "Print verbose output")
 	shardFlag := flag.String("shard", "", "Shard index/total (e.g. 1/4 for first of 4 workers)")
 	offPeakOnlyFlag := flag.Bool("off-peak-only", false, "Only run during off-peak hours (pauses during 8AM-2PM ET on weekdays)")
+	chinaOffPeakOnlyFlag := flag.Bool("china-off-peak-only", false, "Only run during China off-peak hours (pauses during 14:00-18:00 UTC+8 daily)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: nigel <task> [options]\n")
@@ -76,15 +77,16 @@ func main() {
 
 	// Create and run the runner
 	opts := RunnerOptions{
-		Limit:         *limitFlag,
-		TimeLimit:     *timeLimitFlag,
-		DryRun:        *dryRunFlag,
-		Verbose:       *verboseFlag,
-		Partition:     partition,
-		Timeout:       *taskTimeoutFlag,
-		ClaudeCommand: *claudeCommandFlag,
-		ClaudeFlags:   *claudeFlagsFlag,
-		OffPeakOnly:   *offPeakOnlyFlag,
+		Limit:            *limitFlag,
+		TimeLimit:        *timeLimitFlag,
+		DryRun:           *dryRunFlag,
+		Verbose:          *verboseFlag,
+		Partition:        partition,
+		Timeout:          *taskTimeoutFlag,
+		ClaudeCommand:    *claudeCommandFlag,
+		ClaudeFlags:      *claudeFlagsFlag,
+		OffPeakOnly:      *offPeakOnlyFlag,
+		ChinaOffPeakOnly: *chinaOffPeakOnlyFlag,
 	}
 
 	runner, err := NewRunner(env, taskName, opts)
@@ -140,8 +142,7 @@ func reorderArgs(args []string) []string {
 				case "-limit", "--limit", "-time-limit", "--time-limit",
 					"-task-timeout", "--task-timeout", "-claude-command", "--claude-command",
 					"-claude-flags", "--claude-flags",
-					"-shard", "--shard",
-					"-off-peak-only", "--off-peak-only":
+					"-shard", "--shard":
 					i++
 					flags = append(flags, args[i])
 				}

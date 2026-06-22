@@ -117,6 +117,8 @@ nigel mytask --claude-command "~/custom/claude"
 | `--dry-run`         | Print prompts without executing Claude              |
 | `--verbose`         | Print full prompt content and show command overrides |
 | `--shard I/N`       | Shard index/total for parallel processing           |
+| `--off-peak-only`   | Pause during 8AM-2PM ET on weekdays                 |
+| `--china-off-peak-only` | Pause during 14:00-18:00 UTC+8 daily           |
 
 ## Configuration
 

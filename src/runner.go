@@ -91,58 +91,144 @@ func calculateBackoff(level int) time.Duration {
 	return backoff
 }
 
-// isOnPeak returns true if current time is during on-peak hours
-// On-peak: weekdays (Mon-Fri) 8:00 AM - 2:00 PM Eastern Time
-func isOnPeak(t time.Time) bool {
-	// Convert to Eastern Time
-	eastern, _ := time.LoadLocation("America/New_York")
-	localTime := t.In(eastern)
-
-	// Check if weekend
-	weekday := localTime.Weekday()
-	if weekday == time.Saturday || weekday == time.Sunday {
-		return false
-	}
-
-	// Check if within on-peak hours (8:00 - 14:00)
-	hour, minute, _ := localTime.Clock()
-	currentMinutes := hour*60 + minute
-	onPeakStart := 8 * 60  // 8:00 AM
-	onPeakEnd := 14 * 60   // 2:00 PM
-
-	return currentMinutes >= onPeakStart && currentMinutes < onPeakEnd
+type peakSchedule struct {
+	label        string
+	locationName string
+	weekdaysOnly bool
+	startMinutes int
+	endMinutes   int
 }
 
-// timeUntilOffPeak returns duration until the next off-peak period begins
-func timeUntilOffPeak(t time.Time) time.Duration {
-	eastern, _ := time.LoadLocation("America/New_York")
-	localTime := t.In(eastern)
+var (
+	easternPeakSchedule = peakSchedule{
+		label:        "On-peak hours (8AM-2PM ET)",
+		locationName: "America/New_York",
+		weekdaysOnly: true,
+		startMinutes: 8 * 60,
+		endMinutes:   14 * 60,
+	}
+	chinaPeakSchedule = peakSchedule{
+		label:        "China peak hours (14:00-18:00 UTC+8)",
+		locationName: "Asia/Shanghai",
+		startMinutes: 14 * 60,
+		endMinutes:   18 * 60,
+	}
+)
 
-	// If already off-peak, no wait needed
-	if !isOnPeak(t) {
+func (s peakSchedule) location() *time.Location {
+	loc, err := time.LoadLocation(s.locationName)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
+func (s peakSchedule) isOnPeak(t time.Time) bool {
+	localTime := t.In(s.location())
+
+	if s.weekdaysOnly {
+		weekday := localTime.Weekday()
+		if weekday == time.Saturday || weekday == time.Sunday {
+			return false
+		}
+	}
+
+	hour, minute, _ := localTime.Clock()
+	currentMinutes := hour*60 + minute
+
+	return currentMinutes >= s.startMinutes && currentMinutes < s.endMinutes
+}
+
+func (s peakSchedule) timeUntilOffPeak(t time.Time) time.Duration {
+	localTime := t.In(s.location())
+
+	if !s.isOnPeak(t) {
 		return 0
 	}
 
-	// Calculate time until 2:00 PM ET
+	endHour := s.endMinutes / 60
+	endMinute := s.endMinutes % 60
 	offPeakStart := time.Date(
 		localTime.Year(), localTime.Month(), localTime.Day(),
-		14, 0, 0, 0, // 2:00 PM
-		eastern,
+		endHour, endMinute, 0, 0,
+		localTime.Location(),
 	)
 
-	return time.Until(offPeakStart)
+	return offPeakStart.Sub(localTime)
+}
+
+// isOnPeak returns true if current time is during on-peak hours.
+// On-peak: weekdays (Mon-Fri) 8:00 AM - 2:00 PM Eastern Time.
+func isOnPeak(t time.Time) bool {
+	return easternPeakSchedule.isOnPeak(t)
+}
+
+// isChinaOnPeak returns true if current time is during China peak hours.
+// Peak: daily 14:00 - 18:00 UTC+8.
+func isChinaOnPeak(t time.Time) bool {
+	return chinaPeakSchedule.isOnPeak(t)
+}
+
+func activePeakSchedule(t time.Time, opts RunnerOptions) (peakSchedule, bool) {
+	if opts.OffPeakOnly && easternPeakSchedule.isOnPeak(t) {
+		return easternPeakSchedule, true
+	}
+	if opts.ChinaOffPeakOnly && chinaPeakSchedule.isOnPeak(t) {
+		return chinaPeakSchedule, true
+	}
+	return peakSchedule{}, false
+}
+
+// timeUntilOffPeak returns duration until the next off-peak period begins.
+func timeUntilOffPeak(t time.Time) time.Duration {
+	return easternPeakSchedule.timeUntilOffPeak(t)
+}
+
+// timeUntilChinaOffPeak returns duration until China peak hours end.
+func timeUntilChinaOffPeak(t time.Time) time.Duration {
+	return chinaPeakSchedule.timeUntilOffPeak(t)
+}
+
+func waitForOffPeak(r *Runner) bool {
+	schedule, onPeak := activePeakSchedule(time.Now(), r.opts)
+	if !onPeak {
+		return false
+	}
+
+	waitDuration := schedule.timeUntilOffPeak(time.Now())
+	fmt.Printf(ColorInfo("%s. Pausing for %s until off-peak...\n"), schedule.label, waitDuration.Round(time.Minute))
+
+	// Use a ticker to check periodically (allows for interruption)
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for !r.stopRequested {
+		if _, stillOnPeak := activePeakSchedule(time.Now(), r.opts); !stillOnPeak {
+			break
+		}
+		<-ticker.C
+	}
+
+	if r.stopRequested {
+		fmt.Println("Stopped by user request during off-peak wait.")
+		return true
+	}
+
+	fmt.Println(ColorInfo("Off-peak hours resumed. Continuing..."))
+	return false
 }
 
 type RunnerOptions struct {
-	Limit         int
-	TimeLimit     time.Duration
-	DryRun        bool
-	Verbose       bool
-	Partition     HashPartition
-	Timeout       time.Duration // Per-candidate timeout (overrides task.yaml)
-	ClaudeCommand string        // Claude command (overrides task.yaml)
-	ClaudeFlags   string        // Additional Claude flags (overrides task.yaml)
-	OffPeakOnly   bool          // Only run during off-peak hours
+	Limit            int
+	TimeLimit        time.Duration
+	DryRun           bool
+	Verbose          bool
+	Partition        HashPartition
+	Timeout          time.Duration // Per-candidate timeout (overrides task.yaml)
+	ClaudeCommand    string        // Claude command (overrides task.yaml)
+	ClaudeFlags      string        // Additional Claude flags (overrides task.yaml)
+	OffPeakOnly      bool          // Only run during off-peak hours
+	ChinaOffPeakOnly bool          // Only run during China off-peak hours
 }
 
 type Runner struct {
@@ -268,28 +354,9 @@ func (r *Runner) Run() error {
 			break
 		}
 
-		// Check off-peak schedule
-		if r.opts.OffPeakOnly && isOnPeak(time.Now()) {
-			waitDuration := timeUntilOffPeak(time.Now())
-			fmt.Printf(ColorInfo("On-peak hours (8AM-2PM ET). Pausing for %s until off-peak...\n"), waitDuration.Round(time.Minute))
-
-			// Use a ticker to check periodically (allows for interruption)
-			ticker := time.NewTicker(1 * time.Minute)
-			defer ticker.Stop()
-
-			for r.opts.OffPeakOnly && isOnPeak(time.Now()) && !r.stopRequested {
-				select {
-				case <-ticker.C:
-					// Re-check if still on-peak or stop requested
-				}
-			}
-
-			if r.stopRequested {
-				fmt.Println("Stopped by user request during off-peak wait.")
-				break
-			}
-
-			fmt.Println(ColorInfo("Off-peak hours resumed. Continuing..."))
+		// Check off-peak schedules
+		if waitForOffPeak(r) {
+			break
 		}
 
 		iteration++
@@ -453,7 +520,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	// Create inactivity timer - shows after 30 seconds of no streaming output
 	// Note: timer will be stopped when streaming starts
-	inactivityTimer := NewDelayedProgressTimer("Waiting for " + r.backend.DisplayName() + "...", 30*time.Second)
+	inactivityTimer := NewDelayedProgressTimer("Waiting for "+r.backend.DisplayName()+"...", 30*time.Second)
 
 	fmt.Println(ColorInfo("Running " + r.backend.DisplayName() + "..."))
 
@@ -547,7 +614,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 	candidateFixed := !containsKey(newCandidates, candidate.Key)
 
 	if candidateFixed {
-		return r.handleSuccess(candidate, true)  // Build already verified
+		return r.handleSuccess(candidate, true) // Build already verified
 	} else {
 		return r.handleFailure(candidate)
 	}
