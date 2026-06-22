@@ -18,7 +18,6 @@ const (
 	baseBackoff      = 5 * time.Minute
 	maxBackoff       = 1 * time.Hour
 	rateLimitBackoff = 1 * time.Hour
-	rateLimitPhrase  = "You've hit your limit"
 )
 
 // SyncWriter provides synchronized, buffered writing to prevent concurrent
@@ -156,6 +155,7 @@ type Runner struct {
 	stopRequested bool
 	backoffLevel  int
 	executor      CommandExecutor
+	backend       Backend
 }
 
 func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, error) {
@@ -195,6 +195,7 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 		claudeLogger: claudeLogger,
 		claudeStats:  NewSessionStats(),
 		executor:     &RealCommandExecutor{},
+		backend:      nil, // resolved in Run() after command precedence is established
 	}, nil
 }
 
@@ -204,17 +205,21 @@ func (r *Runner) setExecutor(exec CommandExecutor) {
 }
 
 func (r *Runner) Run() error {
-	// Verify claude command exists (skip in dry-run)
-	// Use the same precedence as execution: CLI override > task-level > global
+	// Resolve command: CLI override > task-level > global
+	resolvedCmd := r.opts.ClaudeCommand
+	if resolvedCmd == "" {
+		resolvedCmd = r.task.ClaudeCommand
+	}
+	if resolvedCmd == "" {
+		resolvedCmd = r.env.Config.ClaudeCommand
+	}
+
+	// Create backend based on the resolved command
+	r.backend = NewBackend(resolvedCmd)
+
+	// Verify command exists (skip in dry-run)
 	if !r.opts.DryRun {
-		claudeCmd := r.opts.ClaudeCommand
-		if claudeCmd == "" {
-			claudeCmd = r.task.ClaudeCommand
-		}
-		if claudeCmd == "" {
-			claudeCmd = r.env.Config.ClaudeCommand
-		}
-		if err := CheckClaudeCommand(claudeCmd); err != nil {
+		if err := CheckAICommand(resolvedCmd); err != nil {
 			return err
 		}
 	}
@@ -448,9 +453,9 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	// Create inactivity timer - shows after 30 seconds of no streaming output
 	// Note: timer will be stopped when streaming starts
-	inactivityTimer := NewDelayedProgressTimer("Waiting for Claude...", 30*time.Second)
+	inactivityTimer := NewDelayedProgressTimer("Waiting for " + r.backend.DisplayName() + "...", 30*time.Second)
 
-	fmt.Println(ColorInfo("Running Claude..."))
+	fmt.Println(ColorInfo("Running " + r.backend.DisplayName() + "..."))
 
 	// Track first chunk to stop timer and set color
 	firstChunk := &atomic.Bool{}
@@ -469,7 +474,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	inactivityTimer.Start()
 
-	claudeOutput, err := RunClaudeCommand(claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, timeout, streamCb)
+	claudeOutput, err := RunAICommand(r.backend, claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, timeout, streamCb)
 
 	// Make sure timer is stopped (in case no stream chunks arrived)
 	inactivityTimer.Stop()
@@ -482,8 +487,10 @@ func (r *Runner) runIteration() (done bool, err error) {
 	}
 
 	// Check for rate limit in output
-	if strings.Contains(claudeOutput, rateLimitPhrase) {
-		return false, &rateLimitError{msg: "claude rate limit hit"}
+	for _, phrase := range r.backend.RateLimitPhrases() {
+		if strings.Contains(claudeOutput, phrase) {
+			return false, &rateLimitError{msg: r.backend.DisplayName() + " rate limit hit"}
+		}
 	}
 
 	// Check for timeout

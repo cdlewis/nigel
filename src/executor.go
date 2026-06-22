@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -15,33 +14,13 @@ import (
 	"time"
 )
 
-// timeoutError indicates Claude execution timed out
+// timeoutError indicates AI execution timed out
 type timeoutError struct {
 	duration time.Duration
 }
 
-// StreamCallback is called for each chunk of text received from Claude.
+// StreamCallback is called for each chunk of text received from the AI backend.
 type StreamCallback func(text string)
-
-// Claude stream event types
-type streamEvent struct {
-	Type  string                 `json:"type"`
-	Event map[string]interface{} `json:"event,omitempty"`
-}
-
-// contentBlockDelta represents the delta content in a stream event
-type contentBlockDelta struct {
-	Delta struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"delta"`
-}
-
-// resultEvent represents the final result event
-type resultEvent struct {
-	Type   string `json:"type"`
-	Result string `json:"result,omitempty"`
-}
 
 func (e *timeoutError) Error() string {
 	return fmt.Sprintf("timeout after %s", e.duration)
@@ -67,13 +46,10 @@ func RunCandidateSource(source, workDir string) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
-// RunCommand, RunCommandSilent, and RunCommandShowOnFail are now defined in command_executor.go
-// as thin wrappers around RealCommandExecutor for backward compatibility.
-
-// runningProcess tracks the currently running Claude process for signal forwarding
+// runningProcess tracks the currently running AI process for signal forwarding
 var runningProcess *os.Process
 
-// KillRunningProcess terminates the running Claude process if any
+// KillRunningProcess terminates the running AI process if any
 func KillRunningProcess() {
 	if p := runningProcess; p != nil {
 		// Kill the entire process group
@@ -81,24 +57,12 @@ func KillRunningProcess() {
 	}
 }
 
-// RunClaudeCommand executes the Claude command with prompt, timeout, and streaming output.
+// RunAICommand executes an AI command with prompt, timeout, and streaming output.
 // The streamCb callback is invoked for each chunk of text received.
 // Returns the accumulated output (for rate limit detection) and any error.
-func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration, streamCb StreamCallback) (string, error) {
-	// Build the command using heredoc to avoid shell escaping issues
-	// Using --output-format stream-json --include-partial-messages --verbose
-	// Note: --print is required for --output-format to work
-	const delimiter = "__NIGEL_PROMPT_EOF__"
-	jsonFlags := "--print --output-format stream-json --include-partial-messages --verbose"
-
-	var cmdStr string
-	if claudeFlags != "" {
-		cmdStr = fmt.Sprintf("%s %s %s -p <<'%s'\n%s\n%s",
-			claudeCmd, jsonFlags, claudeFlags, delimiter, prompt, delimiter)
-	} else {
-		cmdStr = fmt.Sprintf("%s %s -p <<'%s'\n%s\n%s",
-			claudeCmd, jsonFlags, delimiter, prompt, delimiter)
-	}
+func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration, streamCb StreamCallback) (string, error) {
+	// Build the command via the backend
+	cmdStr := backend.BuildCommand(baseCmd, extraFlags, prompt)
 
 	// Log the exact command being executed (for debugging hangs)
 	if logWriter != nil {
@@ -109,8 +73,6 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 
 	cmd := exec.Command("bash", args...)
 	cmd.Dir = workDir
-	// Put child in its own process group so it doesn't receive SIGQUIT.
-	// Pdeathsig ensures child is killed if parent dies unexpectedly (Linux only).
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid:   true,
 		Pdeathsig: syscall.SIGTERM,
@@ -132,7 +94,7 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 	}
 	runningProcess = cmd.Process
 
-	// Goroutine to read stdout line-by-line and parse JSON
+	// Goroutine to read stdout line-by-line and delegate parsing to the backend
 	type streamResult struct {
 		fullOutput string
 		err        error
@@ -141,69 +103,37 @@ func RunClaudeCommand(claudeCmd, claudeFlags, prompt, workDir string, logWriter 
 
 	go func() {
 		var fullOutput strings.Builder
-		var messageHasContent bool
 		scanner := bufio.NewScanner(stdoutPipe)
-		// Increase buffer size to handle large JSON responses from Claude
-		// Default is 64KB which isn't enough for large code blocks
 		scanner.Buffer(nil, 10*1024*1024) // 10MB max token size
 
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			// Try to parse as stream event
-			var se streamEvent
-			if jsonErr := json.Unmarshal([]byte(line), &se); jsonErr != nil {
-				// Not valid JSON - write as-is to log and continue
+			text, done := backend.ProcessLine(line)
+			if text != "" {
+				if streamCb != nil {
+					streamCb(text)
+				}
 				if logWriter != nil {
-					fmt.Fprintln(logWriter, line)
+					fmt.Fprint(logWriter, text)
 				}
-				fullOutput.WriteString(line + "\n")
-				continue
+				fullOutput.WriteString(text)
 			}
-
-			// Handle different event types
-			switch se.Type {
-			case "stream_event":
-				// Check if this is a content_block_delta
-				if eventType, ok := se.Event["type"].(string); ok && eventType == "content_block_delta" {
-					// Extract the delta text
-					eventJSON, _ := json.Marshal(se.Event)
-					var delta contentBlockDelta
-					if json.Unmarshal(eventJSON, &delta) == nil && delta.Delta.Type == "text_delta" && delta.Delta.Text != "" {
-						text := delta.Delta.Text
-						messageHasContent = true
-						// Stream the text content to stdout
-						if streamCb != nil {
-							streamCb(text)
-						}
-						// Also write to log
-						if logWriter != nil {
-							fmt.Fprint(logWriter, text)
-						}
-						fullOutput.WriteString(text)
+			if done {
+				// Drain remaining output to avoid blocking the process
+				for scanner.Scan() {
+					if logWriter != nil {
+						fmt.Fprintln(logWriter, scanner.Text())
 					}
 				}
-				// Check if this is message_stop - add newline between messages (only if content was received)
-				if eventType, ok := se.Event["type"].(string); ok && eventType == "message_stop" {
-					if messageHasContent {
-						if streamCb != nil {
-							streamCb("\n")
-						}
-						if logWriter != nil {
-							fmt.Fprint(logWriter, "\n")
-						}
-						fullOutput.WriteString("\n")
-					}
-					messageHasContent = false
-				}
-
-			case "result":
-				// Final result event - completion confirmed
-				var re resultEvent
-				if json.Unmarshal([]byte(line), &re) == nil && re.Result != "" {
-					// Completion confirmed
-				}
+				break
 			}
+
+			// Log raw line for debugging if it wasn't consumed as stream text
+			if text == "" && logWriter != nil {
+				fmt.Fprintln(logWriter, line)
+			}
+			fullOutput.WriteString(line + "\n")
 		}
 
 		// Add a final newline after streaming is complete
@@ -427,17 +357,17 @@ func LoadTemplate(path string) (string, error) {
 
 // HasUncommittedChanges is now defined in command_executor.go.
 
-// CheckClaudeCommand verifies the Claude command is accessible.
-func CheckClaudeCommand(claudeCmd string) error {
+// CheckAICommand verifies the AI command is accessible.
+func CheckAICommand(cmd string) error {
 	// Extract just the command name (first part before any spaces)
-	parts := strings.Fields(claudeCmd)
+	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
-		return fmt.Errorf("empty claude command")
+		return fmt.Errorf("empty command")
 	}
 
 	_, err := exec.LookPath(parts[0])
 	if err != nil {
-		return fmt.Errorf("claude command not found: %s", parts[0])
+		return fmt.Errorf("command not found: %s", parts[0])
 	}
 	return nil
 }
