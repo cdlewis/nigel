@@ -567,12 +567,13 @@ func (r *Runner) runIteration() (done bool, err error) {
 	}
 
 	if err != nil {
-		// Claude errored out - clean up any partial changes before retry
-		fmt.Println(ColorWarning("Claude failed, cleaning up..."))
+		// AI backend errored out - clean up any partial changes before retry
+		fmt.Println(ColorWarning(fmt.Sprintf("%s failed: %v", r.backend.DisplayName(), err)))
+		fmt.Println(ColorWarning("Cleaning up..."))
 		if !r.runResetAndVerify() {
-			return false, &fatalError{msg: "failed to reset after claude error"}
+			return false, &fatalError{msg: "failed to reset after " + strings.ToLower(r.backend.DisplayName()) + " error"}
 		}
-		return false, fmt.Errorf("claude failed: %w", err)
+		return false, fmt.Errorf("%s failed: %w", strings.ToLower(r.backend.DisplayName()), err)
 	}
 
 	// Verify build FIRST before checking candidate presence

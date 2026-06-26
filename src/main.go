@@ -55,6 +55,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Use --list to see available tasks")
 		os.Exit(1)
 	}
+	if len(remaining) > 1 {
+		fmt.Fprintln(os.Stderr, ColorError(fmt.Sprintf("Error: unexpected argument: %s", remaining[1])))
+		fmt.Fprintln(os.Stderr, "Use --claude-command to override the AI command.")
+		os.Exit(1)
+	}
 
 	taskName := remaining[0]
 

@@ -585,3 +585,31 @@ func TestRunCommandShowOnFail(t *testing.T) {
 		}
 	})
 }
+
+type stderrBackend struct{}
+
+func (b stderrBackend) BuildCommand(baseCmd, extraFlags, prompt string) string {
+	return "echo hidden-reason >&2; exit 7"
+}
+
+func (b stderrBackend) ProcessLine(line string) (string, bool) {
+	return "", false
+}
+
+func (b stderrBackend) RateLimitPhrases() []string {
+	return nil
+}
+
+func (b stderrBackend) DisplayName() string {
+	return "Test"
+}
+
+func TestRunAICommandIncludesStderrOnFailure(t *testing.T) {
+	_, err := RunAICommand(stderrBackend{}, "", "", "", ".", nil, 0, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "hidden-reason") {
+		t.Fatalf("error = %q, want stderr included", err.Error())
+	}
+}

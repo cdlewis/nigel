@@ -183,6 +183,9 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 	if result.err != nil {
 		return result.fullOutput, result.err
 	}
+	if waitErr != nil && stderrBuf.Len() > 0 {
+		return result.fullOutput, fmt.Errorf("%w\nstderr: %s", waitErr, strings.TrimSpace(stderrBuf.String()))
+	}
 
 	return result.fullOutput, waitErr
 }
@@ -324,17 +327,17 @@ func shellQuote(value string) string {
 // whether there are changes and what type of command it is.
 // Returns true if the command should be skipped.
 func shouldSkipSuccessCommand(cmd string, hasChanges bool) bool {
-    // Always run if there are changes
-    if hasChanges {
-        return false
-    }
+	// Always run if there are changes
+	if hasChanges {
+		return false
+	}
 
-    // When there are no changes, skip git commit operations
-    // to avoid "nothing to commit" errors
-    lowerCmd := strings.ToLower(cmd)
-    return strings.Contains(lowerCmd, "git commit") ||
-        strings.Contains(lowerCmd, "git merge") ||
-        strings.Contains(lowerCmd, "git rebase")
+	// When there are no changes, skip git commit operations
+	// to avoid "nothing to commit" errors
+	lowerCmd := strings.ToLower(cmd)
+	return strings.Contains(lowerCmd, "git commit") ||
+		strings.Contains(lowerCmd, "git merge") ||
+		strings.Contains(lowerCmd, "git rebase")
 }
 
 // InterpolateCommand replaces template variables in commands.
