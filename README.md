@@ -160,6 +160,19 @@ The `timeout` option limits how long Claude can spend on a single candidate. Whe
 
 Duration format: `30s`, `5m`, `1h`, etc. (Go `time.ParseDuration` format).
 
+When timeout is set, Nigel passes timeout metadata to child commands so Claude hooks can decide whether a command fits in the remaining budget:
+
+```bash
+NIGEL_TIMEOUT_SECONDS=300              # configured timeout duration
+NIGEL_TIMEOUT_DEADLINE_UNIX=1783012345 # Unix timestamp when the budget expires
+```
+
+Hooks can compute remaining seconds with:
+
+```bash
+remaining=$((NIGEL_TIMEOUT_DEADLINE_UNIX - $(date +%s)))
+```
+
 This is different from the `--time-limit` CLI flag which applies to the entire task run. Timeout applies per-candidate.
 
 ## Candidate Sources

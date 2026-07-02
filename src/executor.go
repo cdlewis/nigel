@@ -22,17 +22,21 @@ type timeoutError struct {
 // StreamCallback is called for each chunk of text received from the AI backend.
 type StreamCallback func(text string)
 
-func timeoutEnv(timeout time.Duration) []string {
+func timeoutEnv(timeout time.Duration, deadline time.Time) []string {
 	if timeout <= 0 {
 		return nil
 	}
-	return []string{fmt.Sprintf("NIGEL_TIMEOUT_SECONDS=%d", int(timeout.Seconds()))}
+	return []string{
+		fmt.Sprintf("NIGEL_TIMEOUT_SECONDS=%d", int(timeout.Seconds())),
+		fmt.Sprintf("NIGEL_TIMEOUT_DEADLINE_UNIX=%d", deadline.Unix()),
+	}
 }
 
 func commandEnv(extraEnv []string) []string {
 	env := make([]string, 0, len(os.Environ())+len(extraEnv))
 	for _, entry := range os.Environ() {
-		if strings.HasPrefix(entry, "NIGEL_TIMEOUT_SECONDS=") {
+		if strings.HasPrefix(entry, "NIGEL_TIMEOUT_SECONDS=") ||
+			strings.HasPrefix(entry, "NIGEL_TIMEOUT_DEADLINE_UNIX=") {
 			continue
 		}
 		env = append(env, entry)
@@ -83,7 +87,7 @@ func KillRunningProcess() {
 // RunAICommand executes an AI command with prompt, timeout, and streaming output.
 // The streamCb callback is invoked for each chunk of text received.
 // Returns the accumulated output (for rate limit detection) and any error.
-func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration, streamCb StreamCallback) (string, error) {
+func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration, extraEnv []string, streamCb StreamCallback) (string, error) {
 	// Build the command via the backend
 	cmdStr := backend.BuildCommand(baseCmd, extraFlags, prompt)
 
@@ -96,7 +100,7 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 
 	cmd := exec.Command("bash", args...)
 	cmd.Dir = workDir
-	cmd.Env = commandEnv(timeoutEnv(timeout))
+	cmd.Env = commandEnv(extraEnv)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid:   true,
 		Pdeathsig: syscall.SIGTERM,

@@ -606,7 +606,7 @@ func (b stderrBackend) DisplayName() string {
 }
 
 func TestRunAICommandIncludesStderrOnFailure(t *testing.T) {
-	_, err := RunAICommand(stderrBackend{}, "", "", "", ".", nil, 0, nil)
+	_, err := RunAICommand(stderrBackend{}, "", "", "", ".", nil, 0, nil, nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -616,51 +616,65 @@ func TestRunAICommandIncludesStderrOnFailure(t *testing.T) {
 }
 
 func TestTimeoutEnv(t *testing.T) {
-	if got := timeoutEnv(0); got != nil {
+	deadline := time.Unix(1234567890, 0)
+	if got := timeoutEnv(0, deadline); got != nil {
 		t.Fatalf("timeoutEnv(0) = %v, want nil", got)
 	}
 
-	got := timeoutEnv(5*time.Minute + 500*time.Millisecond)
-	want := []string{"NIGEL_TIMEOUT_SECONDS=300"}
-	if len(got) != len(want) || got[0] != want[0] {
+	got := timeoutEnv(5*time.Minute+500*time.Millisecond, deadline)
+	want := []string{"NIGEL_TIMEOUT_SECONDS=300", "NIGEL_TIMEOUT_DEADLINE_UNIX=1234567890"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("timeoutEnv() = %v, want %v", got, want)
 	}
 }
 
 func TestCommandEnvFiltersParentTimeout(t *testing.T) {
 	t.Setenv("NIGEL_TIMEOUT_SECONDS", "999")
+	t.Setenv("NIGEL_TIMEOUT_DEADLINE_UNIX", "111")
 
 	for _, entry := range commandEnv(nil) {
-		if strings.HasPrefix(entry, "NIGEL_TIMEOUT_SECONDS=") {
+		if strings.HasPrefix(entry, "NIGEL_TIMEOUT_SECONDS=") ||
+			strings.HasPrefix(entry, "NIGEL_TIMEOUT_DEADLINE_UNIX=") {
 			t.Fatalf("commandEnv(nil) included %q, want timeout unset", entry)
 		}
 	}
 
-	got := ""
-	for _, entry := range commandEnv(timeoutEnv(3 * time.Second)) {
+	gotSeconds := ""
+	gotDeadline := ""
+	for _, entry := range commandEnv(timeoutEnv(3*time.Second, time.Unix(222, 0))) {
 		if strings.HasPrefix(entry, "NIGEL_TIMEOUT_SECONDS=") {
-			got = entry
+			gotSeconds = entry
+		}
+		if strings.HasPrefix(entry, "NIGEL_TIMEOUT_DEADLINE_UNIX=") {
+			gotDeadline = entry
 		}
 	}
-	if got != "NIGEL_TIMEOUT_SECONDS=3" {
-		t.Fatalf("timeout env = %q, want %q", got, "NIGEL_TIMEOUT_SECONDS=3")
+	if gotSeconds != "NIGEL_TIMEOUT_SECONDS=3" {
+		t.Fatalf("timeout env = %q, want %q", gotSeconds, "NIGEL_TIMEOUT_SECONDS=3")
+	}
+	if gotDeadline != "NIGEL_TIMEOUT_DEADLINE_UNIX=222" {
+		t.Fatalf("deadline env = %q, want %q", gotDeadline, "NIGEL_TIMEOUT_DEADLINE_UNIX=222")
 	}
 }
 
 func TestRunCandidateSourceReceivesTimeoutEnv(t *testing.T) {
-	output, err := RunCandidateSource("printf '%s' \"$NIGEL_TIMEOUT_SECONDS\"", ".", timeoutEnv(2*time.Minute))
+	output, err := RunCandidateSource(
+		`printf '%s:%s' "$NIGEL_TIMEOUT_SECONDS" "$NIGEL_TIMEOUT_DEADLINE_UNIX"`,
+		".",
+		timeoutEnv(2*time.Minute, time.Unix(333, 0)),
+	)
 	if err != nil {
 		t.Fatalf("RunCandidateSource() error = %v", err)
 	}
-	if string(output) != "120" {
-		t.Fatalf("output = %q, want %q", output, "120")
+	if string(output) != "120:333" {
+		t.Fatalf("output = %q, want %q", output, "120:333")
 	}
 }
 
 type envBackend struct{}
 
 func (b envBackend) BuildCommand(baseCmd, extraFlags, prompt string) string {
-	return `printf '%s\n' "$NIGEL_TIMEOUT_SECONDS"`
+	return `printf '%s:%s\n' "$NIGEL_TIMEOUT_SECONDS" "$NIGEL_TIMEOUT_DEADLINE_UNIX"`
 }
 
 func (b envBackend) ProcessLine(line string) (string, bool) {
@@ -676,11 +690,18 @@ func (b envBackend) DisplayName() string {
 }
 
 func TestRunAICommandReceivesTimeoutEnv(t *testing.T) {
-	output, err := RunAICommand(envBackend{}, "", "", "", ".", nil, 90*time.Second, nil)
+	output, err := RunAICommand(
+		envBackend{},
+		"", "", "", ".",
+		nil,
+		90*time.Second,
+		timeoutEnv(90*time.Second, time.Unix(444, 0)),
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("RunAICommand() error = %v", err)
 	}
-	if !strings.Contains(output, "90") {
-		t.Fatalf("output = %q, want timeout seconds", output)
+	if !strings.Contains(output, "90:444") {
+		t.Fatalf("output = %q, want timeout env", output)
 	}
 }

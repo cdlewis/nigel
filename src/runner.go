@@ -273,11 +273,6 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 		}
 	}
 
-	timeout := opts.Timeout
-	if timeout == 0 {
-		timeout = task.Timeout
-	}
-
 	return &Runner{
 		env:          env,
 		task:         task,
@@ -285,7 +280,7 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 		ignoredList:  ignoredList,
 		claudeLogger: claudeLogger,
 		claudeStats:  NewSessionStats(),
-		executor:     &RealCommandExecutor{ExtraEnv: timeoutEnv(timeout)},
+		executor:     &RealCommandExecutor{},
 		backend:      nil, // resolved in Run() after command precedence is established
 	}, nil
 }
@@ -423,12 +418,11 @@ func (r *Runner) Run() error {
 
 func (r *Runner) runIteration() (done bool, err error) {
 	timeout := r.effectiveTimeout()
-	extraEnv := timeoutEnv(timeout)
 
 	// Run candidate source to get candidates
 	candidateTimer := NewDelayedProgressTimer("Running candidate source...", 5*time.Second)
 	candidateTimer.Start()
-	output, err := RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir, extraEnv)
+	output, err := RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir)
 	candidateTimer.Stop()
 	if err != nil {
 		return false, fmt.Errorf("candidate source failed: %w", err)
@@ -548,9 +542,14 @@ func (r *Runner) runIteration() (done bool, err error) {
 		syncWriter.WriteString(text)
 	}
 
+	extraEnv := timeoutEnv(timeout, time.Now().Add(timeout))
+	if executor, ok := r.executor.(*RealCommandExecutor); ok {
+		executor.ExtraEnv = extraEnv
+	}
+
 	inactivityTimer.Start()
 
-	claudeOutput, err := RunAICommand(r.backend, claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, timeout, streamCb)
+	claudeOutput, err := RunAICommand(r.backend, claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, timeout, extraEnv, streamCb)
 
 	// Make sure timer is stopped (in case no stream chunks arrived)
 	inactivityTimer.Stop()

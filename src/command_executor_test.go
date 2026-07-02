@@ -108,9 +108,12 @@ func (m *MockCommandExecutor) CalledWith(command string) bool {
 }
 
 func TestRealCommandExecutorReceivesExtraEnv(t *testing.T) {
-	executor := &RealCommandExecutor{ExtraEnv: []string{"NIGEL_TIMEOUT_SECONDS=42"}}
+	executor := &RealCommandExecutor{ExtraEnv: []string{
+		"NIGEL_TIMEOUT_SECONDS=42",
+		"NIGEL_TIMEOUT_DEADLINE_UNIX=1234567890",
+	}}
 
-	ok, err := executor.RunSilent(`[ "$NIGEL_TIMEOUT_SECONDS" = "42" ]`, ".")
+	ok, err := executor.RunSilent(`[ "$NIGEL_TIMEOUT_SECONDS" = "42" ] && [ "$NIGEL_TIMEOUT_DEADLINE_UNIX" = "1234567890" ]`, ".")
 	if err != nil {
 		t.Fatalf("RunSilent() error = %v", err)
 	}
