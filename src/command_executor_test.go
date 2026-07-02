@@ -1,5 +1,7 @@
 package main
 
+import "testing"
+
 // MockCommandExecutor is a test double for CommandExecutor.
 type MockCommandExecutor struct {
 	// Commands to results mapping
@@ -103,4 +105,16 @@ func (m *MockCommandExecutor) CalledWith(command string) bool {
 		}
 	}
 	return false
+}
+
+func TestRealCommandExecutorReceivesExtraEnv(t *testing.T) {
+	executor := &RealCommandExecutor{ExtraEnv: []string{"NIGEL_TIMEOUT_SECONDS=42"}}
+
+	ok, err := executor.RunSilent(`[ "$NIGEL_TIMEOUT_SECONDS" = "42" ]`, ".")
+	if err != nil {
+		t.Fatalf("RunSilent() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("RunSilent() = false, want true")
+	}
 }

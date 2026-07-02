@@ -22,6 +22,24 @@ type timeoutError struct {
 // StreamCallback is called for each chunk of text received from the AI backend.
 type StreamCallback func(text string)
 
+func timeoutEnv(timeout time.Duration) []string {
+	if timeout <= 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf("NIGEL_TIMEOUT_SECONDS=%d", int(timeout.Seconds()))}
+}
+
+func commandEnv(extraEnv []string) []string {
+	env := make([]string, 0, len(os.Environ())+len(extraEnv))
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "NIGEL_TIMEOUT_SECONDS=") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env, extraEnv...)
+}
+
 func (e *timeoutError) Error() string {
 	return fmt.Sprintf("timeout after %s", e.duration)
 }
@@ -31,9 +49,14 @@ func (e *timeoutError) IsTimeout() bool {
 }
 
 // RunCandidateSource executes a candidate source command and returns its stdout.
-func RunCandidateSource(source, workDir string) ([]byte, error) {
+func RunCandidateSource(source, workDir string, extraEnv ...[]string) ([]byte, error) {
 	cmd := exec.Command("bash", "-c", source)
 	cmd.Dir = workDir
+	env := []string(nil)
+	if len(extraEnv) > 0 {
+		env = extraEnv[0]
+	}
+	cmd.Env = commandEnv(env)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -73,6 +96,7 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 
 	cmd := exec.Command("bash", args...)
 	cmd.Dir = workDir
+	cmd.Env = commandEnv(timeoutEnv(timeout))
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid:   true,
 		Pdeathsig: syscall.SIGTERM,

@@ -273,6 +273,11 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 		}
 	}
 
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = task.Timeout
+	}
+
 	return &Runner{
 		env:          env,
 		task:         task,
@@ -280,7 +285,7 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 		ignoredList:  ignoredList,
 		claudeLogger: claudeLogger,
 		claudeStats:  NewSessionStats(),
-		executor:     &RealCommandExecutor{},
+		executor:     &RealCommandExecutor{ExtraEnv: timeoutEnv(timeout)},
 		backend:      nil, // resolved in Run() after command precedence is established
 	}, nil
 }
@@ -288,6 +293,13 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 // setExecutor sets the command executor (for testing).
 func (r *Runner) setExecutor(exec CommandExecutor) {
 	r.executor = exec
+}
+
+func (r *Runner) effectiveTimeout() time.Duration {
+	if r.opts.Timeout != 0 {
+		return r.opts.Timeout
+	}
+	return r.task.Timeout
 }
 
 func (r *Runner) Run() error {
@@ -410,10 +422,13 @@ func (r *Runner) Run() error {
 }
 
 func (r *Runner) runIteration() (done bool, err error) {
+	timeout := r.effectiveTimeout()
+	extraEnv := timeoutEnv(timeout)
+
 	// Run candidate source to get candidates
 	candidateTimer := NewDelayedProgressTimer("Running candidate source...", 5*time.Second)
 	candidateTimer.Start()
-	output, err := RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir)
+	output, err := RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir, extraEnv)
 	candidateTimer.Stop()
 	if err != nil {
 		return false, fmt.Errorf("candidate source failed: %w", err)
@@ -509,12 +524,6 @@ func (r *Runner) runIteration() (done bool, err error) {
 		claudeCmd = r.env.Config.ClaudeCommand
 	}
 
-	// Determine timeout: CLI override > task-level
-	timeout := r.opts.Timeout
-	if timeout == 0 {
-		timeout = r.task.Timeout
-	}
-
 	// Create SyncWriter for all output during streaming
 	syncWriter := NewSyncWriter(os.Stdout)
 
@@ -586,7 +595,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	// Build passed - now check if candidate was fixed
 	fmt.Println(ColorInfo("Re-checking candidates..."))
-	output, err = RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir)
+	output, err = RunCandidateSource(r.task.CandidateSource, r.env.ProjectDir, extraEnv)
 	if err != nil {
 		return false, fmt.Errorf("candidate source re-run failed: %w", err)
 	}

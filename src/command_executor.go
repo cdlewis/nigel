@@ -23,12 +23,15 @@ type CommandExecutor interface {
 }
 
 // RealCommandExecutor executes actual shell commands.
-type RealCommandExecutor struct{}
+type RealCommandExecutor struct {
+	ExtraEnv []string
+}
 
 // Run executes a shell command and returns success status.
 func (r *RealCommandExecutor) Run(command, workDir string) (bool, error) {
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = workDir
+	cmd.Env = commandEnv(r.ExtraEnv)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -46,6 +49,7 @@ func (r *RealCommandExecutor) Run(command, workDir string) (bool, error) {
 func (r *RealCommandExecutor) RunSilent(command, workDir string) (bool, error) {
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = workDir
+	cmd.Env = commandEnv(r.ExtraEnv)
 
 	err := cmd.Run()
 	if err != nil {
@@ -61,6 +65,7 @@ func (r *RealCommandExecutor) RunSilent(command, workDir string) (bool, error) {
 func (r *RealCommandExecutor) RunShowOnFail(command, workDir string) (bool, error) {
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = workDir
+	cmd.Env = commandEnv(r.ExtraEnv)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
