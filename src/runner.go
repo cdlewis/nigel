@@ -61,7 +61,7 @@ func (s *SyncWriter) ResetColor() {
 	s.writer.Flush()
 }
 
-// rateLimitError indicates Claude returned a rate limit message
+// rateLimitError indicates the agent returned a rate limit message
 type rateLimitError struct {
 	msg string
 }
@@ -225,8 +225,8 @@ type RunnerOptions struct {
 	Verbose          bool
 	Partition        HashPartition
 	Timeout          time.Duration // Per-candidate timeout (overrides task.yaml)
-	ClaudeCommand    string        // Claude command (overrides task.yaml)
-	ClaudeFlags      string        // Additional Claude flags (overrides task.yaml)
+	Agent            string        // Agent command (overrides task.yaml)
+	AgentFlags       string        // Additional agent flags (overrides task.yaml)
 	OffPeakOnly      bool          // Only run during off-peak hours
 	ChinaOffPeakOnly bool          // Only run during China off-peak hours
 }
@@ -236,8 +236,8 @@ type Runner struct {
 	task          Task
 	opts          RunnerOptions
 	ignoredList   *IgnoredList
-	claudeLogger  *ClaudeLogger
-	claudeStats   *SessionStats
+	agentLogger   *AgentLogger
+	agentStats    *SessionStats
 	stopRequested bool
 	backoffLevel  int
 	executor      CommandExecutor
@@ -265,23 +265,23 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 	// Set repeat mode on ignored list
 	ignoredList.SetMaxRepeat(task.Repeat)
 
-	var claudeLogger *ClaudeLogger
+	var agentLogger *AgentLogger
 	if !opts.DryRun {
-		claudeLogger, err = NewClaudeLogger(task.Dir)
+		agentLogger, err = NewAgentLogger(task.Dir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create claude logger: %w", err)
+			return nil, fmt.Errorf("failed to create agent logger: %w", err)
 		}
 	}
 
 	return &Runner{
-		env:          env,
-		task:         task,
-		opts:         opts,
-		ignoredList:  ignoredList,
-		claudeLogger: claudeLogger,
-		claudeStats:  NewSessionStats(),
-		executor:     &RealCommandExecutor{},
-		backend:      nil, // resolved in Run() after command precedence is established
+		env:         env,
+		task:        task,
+		opts:        opts,
+		ignoredList: ignoredList,
+		agentLogger: agentLogger,
+		agentStats:  NewSessionStats(),
+		executor:    &RealCommandExecutor{},
+		backend:     nil, // resolved in Run() after command precedence is established
 	}, nil
 }
 
@@ -303,13 +303,13 @@ func commandPreview(command string) string {
 }
 
 func (r *Runner) Run() error {
-	// Resolve command: CLI override > task-level > global
-	resolvedCmd := r.opts.ClaudeCommand
+	// Resolve agent command: CLI override > task-level > global
+	resolvedCmd := r.opts.Agent
 	if resolvedCmd == "" {
-		resolvedCmd = r.task.ClaudeCommand
+		resolvedCmd = r.task.Agent
 	}
 	if resolvedCmd == "" {
-		resolvedCmd = r.env.Config.ClaudeCommand
+		resolvedCmd = r.env.Config.Agent
 	}
 
 	// Create backend based on the resolved command
@@ -339,7 +339,7 @@ func (r *Runner) Run() error {
 	}()
 
 	// Print startup banner with cat
-	logPath := filepath.Join(r.task.Dir, "claude.log")
+	logPath := AgentLogPath(r.task.Dir)
 	if cwd, err := os.Getwd(); err == nil {
 		if rel, err := filepath.Rel(cwd, logPath); err == nil {
 			logPath = rel
@@ -414,8 +414,8 @@ func (r *Runner) Run() error {
 		r.backoffLevel = 0
 	}
 
-	if r.claudeLogger != nil {
-		r.claudeLogger.Close()
+	if r.agentLogger != nil {
+		r.agentLogger.Close()
 	}
 
 	return nil
@@ -488,33 +488,36 @@ func (r *Runner) runIteration() (done bool, err error) {
 		fmt.Printf("Prompt:\n%s\n", prompt)
 	}
 
-	// Determine claude flags: CLI override > task-level
-	claudeFlags := r.opts.ClaudeFlags
-	if claudeFlags == "" {
-		claudeFlags = r.task.ClaudeFlags
+	// Determine agent flags: CLI override > task-level > global
+	agentFlags := r.opts.AgentFlags
+	if agentFlags == "" {
+		agentFlags = r.task.AgentFlags
 	}
-	if claudeFlags != "" && r.opts.Verbose {
-		fmt.Printf(ColorInfo("Using claude_flags: %s\n"), claudeFlags)
+	if agentFlags == "" {
+		agentFlags = r.env.Config.AgentFlags
+	}
+	if agentFlags != "" && r.opts.Verbose {
+		fmt.Printf(ColorInfo("Using agent_flags: %s\n"), agentFlags)
 	}
 
-	// Determine claude command: CLI override > task-level > global
-	claudeCmd := r.opts.ClaudeCommand
-	if claudeCmd != "" {
+	// Determine agent command: CLI override > task-level > global
+	agentCmd := r.opts.Agent
+	if agentCmd != "" {
 		if r.opts.Verbose {
-			fmt.Printf(ColorInfo("Using CLI override claude_command: %s\n"), claudeCmd)
+			fmt.Printf(ColorInfo("Using CLI override agent: %s\n"), agentCmd)
 		}
 	} else {
-		claudeCmd = r.task.ClaudeCommand
-		if claudeCmd != "" && r.opts.Verbose {
-			fmt.Printf(ColorInfo("Using task-level claude_command: %s\n"), claudeCmd)
+		agentCmd = r.task.Agent
+		if agentCmd != "" && r.opts.Verbose {
+			fmt.Printf(ColorInfo("Using task-level agent: %s\n"), agentCmd)
 		}
 	}
-	if claudeCmd == "" {
-		claudeCmd = r.env.Config.ClaudeCommand
+	if agentCmd == "" {
+		agentCmd = r.env.Config.Agent
 	}
 
 	if r.opts.Verbose {
-		fmt.Printf(ColorInfo("%s command: %s\n"), r.backend.DisplayName(), commandPreview(r.backend.BuildCommand(claudeCmd, claudeFlags, prompt)))
+		fmt.Printf(ColorInfo("%s command: %s\n"), r.backend.DisplayName(), commandPreview(r.backend.BuildCommand(agentCmd, agentFlags, prompt)))
 	}
 
 	// Dry run: just print and exit
@@ -523,8 +526,8 @@ func (r *Runner) runIteration() (done bool, err error) {
 		return true, nil
 	}
 
-	if r.claudeLogger != nil {
-		r.claudeLogger.StartEntry(prompt)
+	if r.agentLogger != nil {
+		r.agentLogger.StartEntry(prompt)
 	}
 
 	// Create SyncWriter for all output during streaming
@@ -558,7 +561,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	inactivityTimer.Start()
 
-	claudeOutput, err := RunAICommand(r.backend, claudeCmd, claudeFlags, prompt, r.env.ProjectDir, r.claudeLogger, timeout, extraEnv, streamCb)
+	agentOutput, err := RunAICommand(r.backend, agentCmd, agentFlags, prompt, r.env.ProjectDir, r.agentLogger, timeout, extraEnv, streamCb)
 
 	// Make sure timer is stopped (in case no stream chunks arrived)
 	inactivityTimer.Stop()
@@ -566,13 +569,13 @@ func (r *Runner) runIteration() (done bool, err error) {
 	// Reset color and finalize output
 	syncWriter.ResetColor()
 
-	if r.claudeLogger != nil {
-		r.claudeLogger.EndEntry()
+	if r.agentLogger != nil {
+		r.agentLogger.EndEntry()
 	}
 
 	// Check for rate limit in output
 	for _, phrase := range r.backend.RateLimitPhrases() {
-		if strings.Contains(claudeOutput, phrase) {
+		if strings.Contains(agentOutput, phrase) {
 			return false, &rateLimitError{msg: r.backend.DisplayName() + " rate limit hit"}
 		}
 	}
@@ -597,7 +600,7 @@ func (r *Runner) runIteration() (done bool, err error) {
 	// Invalid changes can cause candidates to be excluded from source,
 	// creating false positives if we check presence before build
 	if !r.runVerify() {
-		fmt.Println(ColorWarning("Build failed after Claude changes"))
+		fmt.Println(ColorWarning("Build failed after agent changes"))
 		return r.handleFailure(candidate)
 	}
 
@@ -927,8 +930,8 @@ func (r *Runner) modeString() string {
 }
 
 func (r *Runner) logOutcome(outcome Outcome, details string) {
-	if r.claudeLogger != nil {
-		r.claudeLogger.LogOutcome(outcome, details)
+	if r.agentLogger != nil {
+		r.agentLogger.LogOutcome(outcome, details)
 	}
 }
 

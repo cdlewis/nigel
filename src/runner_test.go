@@ -161,8 +161,8 @@ func TestVerboseDryRunShowsCodexCommandWithYolo(t *testing.T) {
 	env := &Environment{
 		ProjectDir: tmpDir,
 		Config: Config{
-			ClaudeCommand: "codex",
-			ResetCommand:  "true",
+			Agent:        "codex",
+			ResetCommand: "true",
 		},
 		Tasks: map[string]Task{
 			"test-task": {
@@ -359,20 +359,20 @@ func TestCandidateVerificationWithPartition(t *testing.T) {
 	}
 }
 
-func TestClaudeErrorCleanup(t *testing.T) {
-	// Test that Claude errors trigger cleanup via reset
-	// This verifies the fix for environment being left in bad state after Claude crashes
+func TestAgentErrorCleanup(t *testing.T) {
+	// Test that agent errors trigger cleanup via reset
+	// This verifies the fix for environment being left in bad state after an agent crashes
 	t.Run("error returns fatalError when reset fails", func(t *testing.T) {
-		// Mock a claude error scenario - we can't easily test the full flow,
+		// Mock an agent error scenario - we can't easily test the full flow,
 		// but we can verify the error type expectations
-		testErr := fmt.Errorf("simulated claude error")
+		testErr := fmt.Errorf("simulated agent error")
 
-		// The key behavior: when Claude errors, we should attempt cleanup
+		// The key behavior: when the agent errors, we should attempt cleanup
 		// If cleanup fails, we should get a fatalError
 		// This is tested indirectly by verifying fatalError type exists and works correctly
-		fatalErr := &fatalError{msg: "failed to reset after claude error"}
+		fatalErr := &fatalError{msg: "failed to reset after agent error"}
 
-		if fatalErr.Error() != "failed to reset after claude error" {
+		if fatalErr.Error() != "failed to reset after agent error" {
 			t.Errorf("fatalError message incorrect: %v", fatalErr.Error())
 		}
 
@@ -396,7 +396,7 @@ func TestGetPromptMissingTemplateIsFatal(t *testing.T) {
 	env := &Environment{
 		ProjectDir: "/tmp/test-project",
 		Config: Config{
-			ClaudeCommand: "claude",
+			Agent: "claude",
 		},
 		Tasks: map[string]Task{
 			"test-task": {
@@ -434,7 +434,7 @@ func TestHandleSuccess_CommitFailureIsFatal(t *testing.T) {
 	env := &Environment{
 		ProjectDir: tmpDir,
 		Config: Config{
-			ClaudeCommand:  "claude",
+			Agent:          "claude",
 			SuccessCommand: "git commit -m $CANDIDATE",
 			VerifyCommand:  "true", // Build passes
 		},
@@ -492,7 +492,7 @@ func TestHandleSuccess_CommitSuccess(t *testing.T) {
 	env := &Environment{
 		ProjectDir: tmpDir,
 		Config: Config{
-			ClaudeCommand:  "claude",
+			Agent:          "claude",
 			SuccessCommand: "git commit -m $CANDIDATE",
 			VerifyCommand:  "true",
 		},
@@ -541,7 +541,7 @@ func TestHandleFailure_BestEffortCommitFailureIsFatal(t *testing.T) {
 	env := &Environment{
 		ProjectDir: tmpDir,
 		Config: Config{
-			ClaudeCommand:  "claude",
+			Agent:          "claude",
 			SuccessCommand: "git commit -m $CANDIDATE",
 			VerifyCommand:  "true", // Build passes
 		},
@@ -601,7 +601,7 @@ func TestHandleTimeout_CommitFailureIsFatal(t *testing.T) {
 	env := &Environment{
 		ProjectDir: tmpDir,
 		Config: Config{
-			ClaudeCommand:  "claude",
+			Agent:          "claude",
 			SuccessCommand: "git commit -m $CANDIDATE",
 			VerifyCommand:  "true", // Build passes
 		},

@@ -13,9 +13,9 @@
 # there are pauses between tests for manual inspection.
 #
 # TEST SCENARIOS:
-#   1. Quick operations     - No timers should appear (fast candidate source + fast Claude)
+#   1. Quick operations     - No timers should appear (fast candidate source + fast agent)
 #   2. Slow candidate source - Progress timer appears after 5 seconds
-#   3. Slow Claude          - Inactivity timer appears after 30 seconds
+#   3. Slow agent           - Inactivity timer appears after 30 seconds
 #   4. Empty messages       - No extra blank lines in output
 #   5-14. Streaming edge cases - Various chunk sizes and patterns to stress-test buffering
 
@@ -40,7 +40,7 @@ NC='\033[0m' # No Color
 # Cleanup function - reset state between tests
 cleanup() {
     echo -e "${YELLOW}Cleaning up previous test state...${NC}"
-    rm -f nigel/*/ignored.log .fixed-*
+    rm -f nigel/*/ignored.log nigel/*/*.log .fixed-*
     echo ""
 }
 
@@ -100,7 +100,7 @@ main() {
     run_test \
         "Test 1: Quick Operations" \
         "demo-task" \
-        "No timers - candidate source and Claude both respond quickly" \
+        "No timers - candidate source and agent both respond quickly" \
         "MOCK_CLAUDE_FIX=1 MOCK_CLAUDE_DELAY=0.5" \
         30
 
@@ -116,10 +116,10 @@ main() {
 
     cleanup
 
-    # Test 3: Slow Claude (inactivity timer after 30s)
+    # Test 3: Slow agent (inactivity timer after 30s)
     run_test \
-        "Test 3: Slow Claude Response" \
-        "slow-claude-task" \
+        "Test 3: Slow Agent Response" \
+        "slow-agent-task" \
         "'Waiting for Claude...' timer appears after 30 seconds of inactivity" \
         "MOCK_CLAUDE_INACTIVITY_TEST=1 MOCK_CLAUDE_FIX=1" \
         120
@@ -224,7 +224,7 @@ main() {
     echo "Verify each test showed expected behavior:"
     echo "  1. Quick operations  - No timers appeared"
     echo "  2. Slow candidate    - Progress timer after 5s"
-    echo "  3. Slow Claude       - Inactivity timer after 30s"
+    echo "  3. Slow agent        - Inactivity timer after 30s"
     echo "  4. Empty messages    - No extra blank lines"
     echo "  5-13. Edge cases     - No corruption, overwriting, or excessive spacing"
 }

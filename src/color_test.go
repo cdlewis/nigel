@@ -128,7 +128,7 @@ func TestStartupBanner(t *testing.T) {
 }
 
 func TestStartupBannerDryRun(t *testing.T) {
-	result := StartupBanner("my-task", "/path/to/claude.log", "dry-run")
+	result := StartupBanner("my-task", "/path/to/agent.log", "dry-run")
 
 	// Should contain task name
 	if !strings.Contains(result, "my-task") {
@@ -136,7 +136,7 @@ func TestStartupBannerDryRun(t *testing.T) {
 	}
 
 	// Should contain logs path even in dry-run
-	if !strings.Contains(result, "Logs:") || !strings.Contains(result, "claude.log") {
+	if !strings.Contains(result, "Logs:") || !strings.Contains(result, "agent.log") {
 		t.Error("Startup banner should show log path in dry-run mode")
 	}
 

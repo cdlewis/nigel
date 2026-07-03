@@ -16,9 +16,11 @@ func main() {
 	limitFlag := flag.Int("limit", 0, "Maximum number of iterations (0 = unlimited)")
 	timeLimitFlag := flag.Duration("time-limit", 0*time.Second, "Maximum duration (e.g. 1h30m, 30m, 5s) (0 = unlimited)")
 	taskTimeoutFlag := flag.Duration("task-timeout", 0*time.Second, "Per-candidate timeout (e.g. 5m, 30s) (overrides task.yaml)")
-	claudeCommandFlag := flag.String("claude-command", "", "Claude command to use (overrides task.yaml)")
-	claudeFlagsFlag := flag.String("claude-flags", "", "Additional Claude flags (overrides task.yaml)")
-	dryRunFlag := flag.Bool("dry-run", false, "Print prompt without executing Claude")
+	agentFlag := flag.String("agent", "", "Agent command to use (overrides task.yaml)")
+	agentFlagsFlag := flag.String("agent-flags", "", "Additional agent flags (overrides task.yaml)")
+	claudeCommandFlag := flag.String("claude-command", "", "Legacy alias for --agent")
+	claudeFlagsFlag := flag.String("claude-flags", "", "Legacy alias for --agent-flags")
+	dryRunFlag := flag.Bool("dry-run", false, "Print prompt without executing the agent")
 	verboseFlag := flag.Bool("verbose", false, "Print verbose output")
 	shardFlag := flag.String("shard", "", "Shard index/total (e.g. 1/4 for first of 4 workers)")
 	offPeakOnlyFlag := flag.Bool("off-peak-only", false, "Only run during off-peak hours (pauses during 8AM-2PM ET on weekdays)")
@@ -57,7 +59,7 @@ func main() {
 	}
 	if len(remaining) > 1 {
 		fmt.Fprintln(os.Stderr, ColorError(fmt.Sprintf("Error: unexpected argument: %s", remaining[1])))
-		fmt.Fprintln(os.Stderr, "Use --claude-command to override the AI command.")
+		fmt.Fprintln(os.Stderr, "Use --agent to override the AI command.")
 		os.Exit(1)
 	}
 
@@ -80,6 +82,9 @@ func main() {
 		partition = HashPartition{WorkerCount: total, WorkerIndex: index - 1} // Convert to 0-based internally
 	}
 
+	agent := resolveAlias(*agentFlag, *claudeCommandFlag)
+	agentFlags := resolveAlias(*agentFlagsFlag, *claudeFlagsFlag)
+
 	// Create and run the runner
 	opts := RunnerOptions{
 		Limit:            *limitFlag,
@@ -88,8 +93,8 @@ func main() {
 		Verbose:          *verboseFlag,
 		Partition:        partition,
 		Timeout:          *taskTimeoutFlag,
-		ClaudeCommand:    *claudeCommandFlag,
-		ClaudeFlags:      *claudeFlagsFlag,
+		Agent:            agent,
+		AgentFlags:       agentFlags,
 		OffPeakOnly:      *offPeakOnlyFlag,
 		ChinaOffPeakOnly: *chinaOffPeakOnlyFlag,
 	}
@@ -145,7 +150,8 @@ func reorderArgs(args []string) []string {
 				// Check if it's a flag that takes a value
 				switch arg {
 				case "-limit", "--limit", "-time-limit", "--time-limit",
-					"-task-timeout", "--task-timeout", "-claude-command", "--claude-command",
+					"-task-timeout", "--task-timeout", "-agent", "--agent",
+					"-agent-flags", "--agent-flags", "-claude-command", "--claude-command",
 					"-claude-flags", "--claude-flags",
 					"-shard", "--shard":
 					i++
@@ -159,4 +165,11 @@ func reorderArgs(args []string) []string {
 	}
 
 	return append(flags, positional...)
+}
+
+func resolveAlias(canonical, legacy string) string {
+	if canonical != "" {
+		return canonical
+	}
+	return legacy
 }

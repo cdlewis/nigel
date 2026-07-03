@@ -1,6 +1,6 @@
 <img src="nigel2.png" width="500">
 
-Nigel is a tool for automating iterative code improvements using Claude Code. You specify a task and a set of candidates. Nigel works through the task with appropriate success/failure handling, logging, guardrails, etc.
+Nigel is a tool for automating iterative code improvements using an AI coding agent such as Claude Code or Codex. You specify a task and a set of candidates. Nigel works through the task with appropriate success/failure handling, logging, guardrails, etc.
 
 Nigel was developed as part of my work on the [Snowboard Kids 2 Decompilation](https://github.com/cdlewis/snowboardkids2-decomp) but I have split it off into its own project so that I can use it elsewhere. You can still find [real-world examples](https://github.com/cdlewis/snowboardkids2-decomp/tree/main/task-runner) of Nigel in that project.
 
@@ -8,7 +8,7 @@ Nigel was developed as part of my work on the [Snowboard Kids 2 Decompilation](h
 
 1. Runs your **candidate source** to identify tasks to run
 2. Selects the first unprocessed candidate
-3. Sends candidate details to Claude with your templated prompt
+3. Sends candidate details to the configured agent with your templated prompt
 4. Runs your **verify command** (e.g. `cargo check`)
 5. Checks if the candidate is still present in the source
 6. Commits successful tasks or resets the project on failure
@@ -25,7 +25,7 @@ Nigel may be a good fix for you if you need to run a large number of long-runnin
 I love Nigel because:
 * Tasks are expressed via configuration: it is to experiment with new ideas by copying an existing task and tweaking it;
 * Candidate sources are just the JSON / newline delimited output of shell commands so it's easy to drop in existing scripts or write new ones. There's no special schema.
-* Claude's output is streamed and presented to you like a normal session despite you running in non-interactive mode. This is far nicer than seeing a blank screen for an hour while Claude churns through a particularly gnarly task!
+* Agent output is streamed and presented to you like a normal session despite you running in non-interactive mode. This is far nicer than seeing a blank screen for an hour while the agent churns through a particularly gnarly task!
 * You can tell Nigel to stop after the current task finishes with Ctrl-\\. Again, great for long running sessions where you want to try something new but don't want to throw way 30+ minutes of work.
 * Built in parallelism support with --evens and --odds, letting you distribute tasks across multiple worktrees without conflicts.
 * Nigel is extensively tested with both unit and integration tests.
@@ -34,7 +34,7 @@ I love Nigel because:
 ## Requirements
 
 - Go 1.21+
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- An authenticated agent CLI, such as [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or Codex
 
 ## Installation
 
@@ -67,7 +67,7 @@ project-root/
 
 **config.yaml:**
 ```yaml
-claude_command: "~/.claude/local/node_modules/.bin/claude"
+agent: "~/.claude/local/node_modules/.bin/claude"
 verify_command: "cargo check"
 success_command: "git commit -m 'Fix: $CANDIDATE'"
 reset_command: "git reset --hard"
@@ -79,7 +79,7 @@ candidate_source: "cargo check 2>&1 | grep -oP 'error\\[E\\d+\\].*' | jq -R -s '
 prompt: "Fix this compiler error: $INPUT"
 ```
 
-You can override the global `claude_command` for a specific task by adding `claude_command` to your `task.yaml`:
+You can override the global `agent` for a specific task by adding `agent` to your `task.yaml`.
 
 ## Usage
 
@@ -104,7 +104,7 @@ nigel mytask --shard 4/4  # Terminal 4
 
 # Override task settings temporarily
 nigel mytask --task-timeout 5m      # Per-candidate timeout
-nigel mytask --claude-command "~/custom/claude"
+nigel mytask --agent "~/custom/claude"
 ```
 
 | Flag                | Description                                         |
@@ -113,8 +113,9 @@ nigel mytask --claude-command "~/custom/claude"
 | `--limit N`         | Maximum iterations (0 = unlimited)                  |
 | `--time-limit`      | Maximum duration for entire task run                |
 | `--task-timeout`    | Per-candidate timeout (overrides task.yaml)         |
-| `--claude-command`  | Claude command to use (overrides task.yaml)         |
-| `--dry-run`         | Print prompts without executing Claude              |
+| `--agent`           | Agent command to use (overrides task.yaml)          |
+| `--agent-flags`     | Additional agent flags (overrides task.yaml)        |
+| `--dry-run`         | Print prompts without executing the agent           |
 | `--verbose`         | Print full prompt content and show command overrides |
 | `--shard I/N`       | Shard index/total for parallel processing           |
 | `--off-peak-only`   | Pause during 8AM-2PM ET on weekdays                 |
@@ -125,10 +126,10 @@ nigel mytask --claude-command "~/custom/claude"
 ### config.yaml (Global)
 
 ```yaml
-# Path to Claude CLI (find this by running `claude doctor`)
-claude_command: "~/.claude/local/node_modules/.bin/claude"
+# Path to agent CLI (for Claude Code, find this by running `claude doctor`)
+agent: "~/.claude/local/node_modules/.bin/claude"
 
-# Runs after Claude makes changes, before checking if candidate is resolved
+# Runs after the agent makes changes, before checking if candidate is resolved
 verify_command: "cargo check"
 
 # Runs when candidate is no longer present in source
@@ -145,22 +146,24 @@ reset_command: "git reset --hard"
 candidate_source: "cargo check 2>&1 | grep error"
 prompt: "Fix this issue: $INPUT"       # Inline prompt, or...
 template: "template.txt"               # ...load from file
-claude_flags: "--fast"                 # Optional CLI flags
-claude_command: "~/.claude/custom"     # Override global claude_command
+agent_flags: "--fast"                  # Optional CLI flags
+agent: "~/.claude/custom"              # Override global agent
 accept_best_effort: false              # Accept partial fixes
 timeout: "5m"                          # Per-candidate timeout (optional)
 ```
 
+Legacy aliases `claude_command`, `claude_flags`, `--claude-command`, and `--claude-flags` are still accepted. If both new and legacy names are present, the new `agent` / `agent_flags` names win.
+
 **Timeouts**
 
-The `timeout` option limits how long Claude can spend on a single candidate. When timeout is reached, Claude is interrupted and Nigel handles the current work:
+The `timeout` option limits how long the agent can spend on a single candidate. When timeout is reached, the agent is interrupted and Nigel handles the current work:
 
 - If `accept_best_effort: true` and build passes, commits partial progress
 - Otherwise, resets changes and marks candidate as ignored
 
 Duration format: `30s`, `5m`, `1h`, etc. (Go `time.ParseDuration` format).
 
-When timeout is set, Nigel passes timeout metadata to child commands so Claude hooks can decide whether a command fits in the remaining budget:
+When timeout is set, Nigel passes timeout metadata to child commands so agent hooks can decide whether a command fits in the remaining budget:
 
 ```bash
 NIGEL_TIMEOUT_SECONDS=300              # configured timeout duration
@@ -210,7 +213,7 @@ Access with `$INPUT["file"]`, `$INPUT["line"]`.
 
 ## Prompts
 
-Prompts tell Claude what to do with each candidate. You can either inline them in `task.yaml`:
+Prompts tell the agent what to do with each candidate. You can either inline them in `task.yaml`:
 
 ```yaml
 prompt: "Fix this compiler error: $INPUT"
@@ -245,7 +248,7 @@ Make the minimal change necessary to resolve the error.
 
 ## Best-Effort Mode
 
-By default, Nigel resets changes if the candidate is still present after Claude's fix. This makes sense for things like compiler errors where you need exact resolution.
+By default, Nigel resets changes if the candidate is still present after the agent's fix. This makes sense for things like compiler errors where you need exact resolution.
 
 For tasks where partial progress is valuable (refactoring, lint fixes, etc.), set:
 
@@ -253,4 +256,4 @@ For tasks where partial progress is valuable (refactoring, lint fixes, etc.), se
 accept_best_effort: true
 ```
 
-This commits whatever Claude produces, regardless of whether the candidate fully resolves.
+This commits whatever the agent produces, regardless of whether the candidate fully resolves.

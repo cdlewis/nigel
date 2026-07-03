@@ -20,22 +20,22 @@ bin/nigel --list
 
 ## Architecture
 
-Nigel is a CLI tool that automates iterative code improvements using Claude AI. It follows a simple loop: identify issues via candidate sources, send them to Claude for fixing, verify results, and commit successful changes.
+Nigel is a CLI tool that automates iterative code improvements using an AI coding agent such as Claude Code or Codex. It follows a simple loop: identify issues via candidate sources, send them to the configured agent for fixing, verify results, and commit successful changes.
 
 ### Core Components
 
 - **src/main.go** - CLI entry point with flag parsing. Reorders args so flags can appear after positional arguments.
 - **src/config.go** - Loads configuration from `nigel/config.yaml` (global settings) and `nigel/<task>/task.yaml` (per-task). Also supports `task-runner/` for backwards compatibility. Contains `Environment` struct that holds all runtime config.
 - **src/runner.go** - Main execution loop (`Runner.Run`). Handles iterations, graceful shutdown (SIGQUIT), and consecutive failure backoff (3 failures → 5 min sleep).
-- **src/executor.go** - Shell command execution, prompt interpolation, and Claude invocation. Streams Claude output to both stdout and log file.
+- **src/executor.go** - Shell command execution, prompt interpolation, and agent invocation. Streams agent output to both stdout and log file.
 - **src/candidate.go** - Parses JSON output from candidate sources into candidates. Supports both string and array formats. Manages ignored list (processed candidates) and hash-based filtering for parallel runners.
-- **src/logger.go** - Logs Claude interactions to `claude.log` with timestamps.
+- **src/logger.go** - Logs agent interactions to `agent.log` with timestamps, reusing an existing `claude.log` for backwards compatibility.
 
 ### Execution Flow
 
 1. `DiscoverEnvironment()` finds `nigel/` directory (or `task-runner/` for backwards compatibility) and loads configs
 2. `Runner.Run()` iterates until done or limit reached
-3. Each iteration: run candidate source → select candidate → build prompt → invoke Claude → verify fix → commit or reset
+3. Each iteration: run candidate source → select candidate → build prompt → invoke agent → verify fix → commit or reset
 4. Processed candidates stored in `ignored.log` to prevent reprocessing (unless `ignore_list` task option is set)
 
 ### Task Configuration Options
@@ -45,9 +45,9 @@ Tasks can be configured in `nigel/<task>/task.yaml`:
 - `candidate_source` - Command that outputs JSON array of candidates
 - `prompt` - Inline prompt template (mutually exclusive with `template`)
 - `template` - Path to prompt template file (mutually exclusive with `prompt`)
-- `claude_flags` - Additional flags to pass to Claude
-- `claude_command` - Override Claude command (also available as global config)
-- `accept_best_effort` - If true, commit changes even if Claude indicates partial success
+- `agent_flags` - Additional flags to pass to the agent
+- `agent` - Override agent command (also available as global config)
+- `accept_best_effort` - If true, commit changes even if the agent only makes partial progress
 - `timeout` - Per-candidate timeout duration
 - `ignore_list` - Command that outputs list of already-processed keys (one per line). Use `echo -n` to disable ignoring and reprocess all candidates. If not specified, defaults to reading from `ignored.log` file.
 - `repeat` - Retry each candidate up to N times. If a fix works, the candidate disappears from the source output and retries stop naturally. If the fix fails, the candidate persists and gets retried until the attempt count reaches N. Default is 0 (process each candidate once).
@@ -94,6 +94,6 @@ Use `--non-interactive` for automated execution (skips "Press Enter" prompts). O
 The smoke test (`test-smoke.sh`) validates:
 - Normal behavior (quick operations, no timers)
 - Slow candidate source (delayed progress timer after 5s)
-- Slow Claude response (inactivity timer after 30s)
+- Slow agent response (inactivity timer after 30s)
 
 This ensures changes don't break core UI behaviors like progress display and timer management.

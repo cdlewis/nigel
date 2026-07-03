@@ -400,7 +400,7 @@ func TestStreamingWithEmptyMessages(t *testing.T) {
 	}
 	logWriter := &logOutput
 
-	// Simulate the streaming event processing from RunClaudeCommand
+	// Simulate the streaming event processing from RunAICommand
 	// This mimics the goroutine that processes stream events
 
 	// Helper function to process a stream event line

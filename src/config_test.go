@@ -13,9 +13,10 @@ func TestLoadConfigRejectsUnknownFields(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid config",
+			name: "valid config with canonical agent fields",
 			yaml: `
-claude_command: "/path/to/claude"
+agent: "/path/to/codex"
+agent_flags: "--model gpt-5"
 verify_command: "cargo check"
 success_command: "git commit -m 'Fix: $CANDIDATE'"
 reset_command: "git reset --hard"
@@ -23,9 +24,16 @@ reset_command: "git reset --hard"
 			wantErr: false,
 		},
 		{
-			name: "unknown field",
+			name: "legacy claude_command alias",
 			yaml: `
 claude_command: "claude"
+`,
+			wantErr: false,
+		},
+		{
+			name: "unknown field",
+			yaml: `
+agent: "claude"
 rofnkjsnfke3: "bad"
 `,
 			wantErr: true,
@@ -40,7 +48,7 @@ cluade_command: "claude"
 		{
 			name: "typo in verify_command",
 			yaml: `
-claude_command: "claude"
+agent: "claude"
 verify_comand: "cargo check"
 `,
 			wantErr: true,
@@ -48,7 +56,7 @@ verify_comand: "cargo check"
 		{
 			name: "minimal valid config",
 			yaml: `
-claude_command: "claude"
+agent: "claude"
 `,
 			wantErr: false,
 		},
@@ -68,6 +76,54 @@ claude_command: "claude"
 				t.Errorf("loadConfig() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoadConfigNormalizesAgentAliases(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yaml := `
+agent: "codex"
+agent_flags: "--model gpt-5"
+claude_command: "claude"
+claude_flags: "--legacy"
+`
+	if err := os.WriteFile(configPath, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := loadConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+	if config.Agent != "codex" {
+		t.Fatalf("Agent = %q, want codex", config.Agent)
+	}
+	if config.AgentFlags != "--model gpt-5" {
+		t.Fatalf("AgentFlags = %q, want --model gpt-5", config.AgentFlags)
+	}
+}
+
+func TestLoadConfigUsesLegacyAliasesWhenCanonicalMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yaml := `
+claude_command: "claude"
+claude_flags: "--legacy"
+`
+	if err := os.WriteFile(configPath, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := loadConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+	if config.Agent != "claude" {
+		t.Fatalf("Agent = %q, want claude", config.Agent)
+	}
+	if config.AgentFlags != "--legacy" {
+		t.Fatalf("AgentFlags = %q, want --legacy", config.AgentFlags)
 	}
 }
 
@@ -98,8 +154,8 @@ template: "template.txt"
 			yaml: `
 candidate_source: "cargo check 2>&1 | grep error"
 prompt: "Fix this issue: $INPUT"
-claude_flags: "--fast"
-claude_command: "/custom/claude"
+agent_flags: "--fast"
+agent: "/custom/codex"
 accept_best_effort: true
 `,
 			wantErr: false,
@@ -146,5 +202,57 @@ accept_best_effort: truee
 				t.Errorf("loadTask() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoadTaskNormalizesAgentAliases(t *testing.T) {
+	tmpDir := t.TempDir()
+	taskPath := filepath.Join(tmpDir, "task.yaml")
+	yaml := `
+candidate_source: "cargo check"
+prompt: "fix it"
+agent: "codex"
+agent_flags: "--model gpt-5"
+claude_command: "claude"
+claude_flags: "--legacy"
+`
+	if err := os.WriteFile(taskPath, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := loadTask(taskPath)
+	if err != nil {
+		t.Fatalf("loadTask failed: %v", err)
+	}
+	if task.Agent != "codex" {
+		t.Fatalf("Agent = %q, want codex", task.Agent)
+	}
+	if task.AgentFlags != "--model gpt-5" {
+		t.Fatalf("AgentFlags = %q, want --model gpt-5", task.AgentFlags)
+	}
+}
+
+func TestLoadTaskUsesLegacyAliasesWhenCanonicalMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	taskPath := filepath.Join(tmpDir, "task.yaml")
+	yaml := `
+candidate_source: "cargo check"
+prompt: "fix it"
+claude_command: "claude"
+claude_flags: "--legacy"
+`
+	if err := os.WriteFile(taskPath, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := loadTask(taskPath)
+	if err != nil {
+		t.Fatalf("loadTask failed: %v", err)
+	}
+	if task.Agent != "claude" {
+		t.Fatalf("Agent = %q, want claude", task.Agent)
+	}
+	if task.AgentFlags != "--legacy" {
+		t.Fatalf("AgentFlags = %q, want --legacy", task.AgentFlags)
 	}
 }

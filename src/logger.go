@@ -20,25 +20,34 @@ const (
 	OutcomeBuildFailed   Outcome = "BUILD_FAILED"
 )
 
-// ClaudeLogger handles logging of Claude interactions.
-type ClaudeLogger struct {
+// AgentLogger handles logging of agent interactions.
+type AgentLogger struct {
 	file      *os.File
 	startTime time.Time
 }
 
-// NewClaudeLogger creates a new logger for Claude interactions.
-func NewClaudeLogger(taskDir string) (*ClaudeLogger, error) {
-	path := filepath.Join(taskDir, "claude.log")
+// AgentLogPath returns the log path for a task, preserving an existing legacy log.
+func AgentLogPath(taskDir string) string {
+	legacyPath := filepath.Join(taskDir, "claude.log")
+	if _, err := os.Stat(legacyPath); err == nil {
+		return legacyPath
+	}
+	return filepath.Join(taskDir, "agent.log")
+}
+
+// NewAgentLogger creates a new logger for agent interactions.
+func NewAgentLogger(taskDir string) (*AgentLogger, error) {
+	path := AgentLogPath(taskDir)
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open claude log: %w", err)
+		return nil, fmt.Errorf("failed to open agent log: %w", err)
 	}
 
-	return &ClaudeLogger{file: file}, nil
+	return &AgentLogger{file: file}, nil
 }
 
 // StartEntry begins a new log entry with timestamp and prompt.
-func (l *ClaudeLogger) StartEntry(prompt string) error {
+func (l *AgentLogger) StartEntry(prompt string) error {
 	l.startTime = time.Now()
 	timestamp := l.startTime.Format("2006-01-02 15:04:05")
 
@@ -48,7 +57,7 @@ func (l *ClaudeLogger) StartEntry(prompt string) error {
 }
 
 // LogOutcome logs the result of processing the candidate.
-func (l *ClaudeLogger) LogOutcome(outcome Outcome, details string) error {
+func (l *AgentLogger) LogOutcome(outcome Outcome, details string) error {
 	duration := time.Since(l.startTime)
 	_, err := fmt.Fprintf(l.file, "\n%s\nOutcome: %s\nDuration: %s\nDetails: %s\n",
 		separator, outcome, formatDuration(duration), details)
@@ -56,18 +65,18 @@ func (l *ClaudeLogger) LogOutcome(outcome Outcome, details string) error {
 }
 
 // EndEntry closes the current log entry.
-func (l *ClaudeLogger) EndEntry() error {
+func (l *AgentLogger) EndEntry() error {
 	_, err := fmt.Fprintf(l.file, "%s\n", separator)
 	return err
 }
 
-// Write implements io.Writer for streaming Claude output to the log.
-func (l *ClaudeLogger) Write(p []byte) (n int, err error) {
+// Write implements io.Writer for streaming agent output to the log.
+func (l *AgentLogger) Write(p []byte) (n int, err error) {
 	return l.file.Write(p)
 }
 
 // Close closes the log file.
-func (l *ClaudeLogger) Close() error {
+func (l *AgentLogger) Close() error {
 	if l.file != nil {
 		return l.file.Close()
 	}
@@ -75,7 +84,7 @@ func (l *ClaudeLogger) Close() error {
 }
 
 // Path returns the path to the log file.
-func (l *ClaudeLogger) Path() string {
+func (l *AgentLogger) Path() string {
 	return l.file.Name()
 }
 

@@ -13,25 +13,30 @@ import (
 )
 
 type Config struct {
+	Agent          string `yaml:"agent"`
+	AgentFlags     string `yaml:"agent_flags"`
 	ClaudeCommand  string `yaml:"claude_command"`
+	ClaudeFlags    string `yaml:"claude_flags"`
 	SuccessCommand string `yaml:"success_command"`
 	ResetCommand   string `yaml:"reset_command"`
 	VerifyCommand  string `yaml:"verify_command"`
 }
 
 type Task struct {
-	Name             string // derived from directory name
-	Dir              string // path to task directory
-	CandidateSource  string `yaml:"candidate_source"`
-	Prompt           string `yaml:"prompt"`
-	Template         string `yaml:"template"`
-	ClaudeFlags      string `yaml:"claude_flags"`
-	ClaudeCommand    string `yaml:"claude_command"`
-	SuccessCommand   string `yaml:"success_command"`
+	Name             string        // derived from directory name
+	Dir              string        // path to task directory
+	CandidateSource  string        `yaml:"candidate_source"`
+	Prompt           string        `yaml:"prompt"`
+	Template         string        `yaml:"template"`
+	AgentFlags       string        `yaml:"agent_flags"`
+	Agent            string        `yaml:"agent"`
+	ClaudeCommand    string        `yaml:"claude_command"`
+	ClaudeFlags      string        `yaml:"claude_flags"`
+	SuccessCommand   string        `yaml:"success_command"`
 	AcceptBestEffort bool          `yaml:"accept_best_effort"`
 	Timeout          time.Duration `yaml:"timeout"`
-	IgnoreList       string `yaml:"ignore_list"` // Command to generate ignore list
-	Repeat           int           `yaml:"repeat"` // Retry each candidate N times
+	IgnoreList       string        `yaml:"ignore_list"` // Command to generate ignore list
+	Repeat           int           `yaml:"repeat"`      // Retry each candidate N times
 }
 
 type Environment struct {
@@ -63,13 +68,11 @@ func DiscoverEnvironment() (*Environment, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Apply defaults
-	if config.ClaudeCommand == "" {
-		config.ClaudeCommand = "claude"
+	config.normalize()
+	if config.Agent == "" {
+		config.Agent = "claude"
 	}
-
-	// Expand tilde in claude command
-	config.ClaudeCommand = expandTilde(config.ClaudeCommand)
+	config.Agent = expandTilde(config.Agent)
 
 	tasks, err := loadTasks(runnerDir)
 	if err != nil {
@@ -101,7 +104,17 @@ func loadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	config.normalize()
 	return &config, nil
+}
+
+func (c *Config) normalize() {
+	if c.Agent == "" {
+		c.Agent = c.ClaudeCommand
+	}
+	if c.AgentFlags == "" {
+		c.AgentFlags = c.ClaudeFlags
+	}
 }
 
 // loadTasks scans runnerDir for subdirectories containing task.yaml files.
@@ -133,8 +146,8 @@ func loadTasks(runnerDir string) (map[string]Task, error) {
 		task.Name = entry.Name()
 		task.Dir = taskDir
 
-		// Expand tilde in claude command if present
-		task.ClaudeCommand = expandTilde(task.ClaudeCommand)
+		task.normalize()
+		task.Agent = expandTilde(task.Agent)
 
 		// Apply defaults
 		if task.Timeout == 0 {
@@ -170,7 +183,17 @@ func loadTask(path string) (*Task, error) {
 		return nil, fmt.Errorf("failed to parse task: %w", err)
 	}
 
+	task.normalize()
 	return &task, nil
+}
+
+func (t *Task) normalize() {
+	if t.Agent == "" {
+		t.Agent = t.ClaudeCommand
+	}
+	if t.AgentFlags == "" {
+		t.AgentFlags = t.ClaudeFlags
+	}
 }
 
 // expandTilde expands ~ to the user's home directory.

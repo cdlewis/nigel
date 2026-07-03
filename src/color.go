@@ -59,8 +59,8 @@ func ColorDim(text string) string {
 	return colorDim + text + colorReset
 }
 
-// ColorClaude returns dim italic text for Claude output
-func ColorClaude(text string) string {
+// ColorAgent returns dim italic text for agent output
+func ColorAgent(text string) string {
 	return colorDim + colorItalic + text + colorReset
 }
 
