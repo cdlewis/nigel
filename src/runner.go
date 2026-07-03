@@ -297,6 +297,11 @@ func (r *Runner) effectiveTimeout() time.Duration {
 	return r.task.Timeout
 }
 
+func commandPreview(command string) string {
+	line, _, _ := strings.Cut(command, "\n")
+	return line
+}
+
 func (r *Runner) Run() error {
 	// Resolve command: CLI override > task-level > global
 	resolvedCmd := r.opts.ClaudeCommand
@@ -483,16 +488,6 @@ func (r *Runner) runIteration() (done bool, err error) {
 		fmt.Printf("Prompt:\n%s\n", prompt)
 	}
 
-	// Dry run: just print and exit
-	if r.opts.DryRun {
-		fmt.Printf("\n--- Dry Run Prompt ---\n%s\n--- End Prompt ---\n", prompt)
-		return true, nil
-	}
-
-	if r.claudeLogger != nil {
-		r.claudeLogger.StartEntry(prompt)
-	}
-
 	// Determine claude flags: CLI override > task-level
 	claudeFlags := r.opts.ClaudeFlags
 	if claudeFlags == "" {
@@ -516,6 +511,20 @@ func (r *Runner) runIteration() (done bool, err error) {
 	}
 	if claudeCmd == "" {
 		claudeCmd = r.env.Config.ClaudeCommand
+	}
+
+	if r.opts.Verbose {
+		fmt.Printf(ColorInfo("%s command: %s\n"), r.backend.DisplayName(), commandPreview(r.backend.BuildCommand(claudeCmd, claudeFlags, prompt)))
+	}
+
+	// Dry run: just print and exit
+	if r.opts.DryRun {
+		fmt.Printf("\n--- Dry Run Prompt ---\n%s\n--- End Prompt ---\n", prompt)
+		return true, nil
+	}
+
+	if r.claudeLogger != nil {
+		r.claudeLogger.StartEntry(prompt)
 	}
 
 	// Create SyncWriter for all output during streaming

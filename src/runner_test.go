@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -147,6 +149,70 @@ func TestPeakSchedules(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestVerboseDryRunShowsCodexCommandWithYolo(t *testing.T) {
+	tmpDir := t.TempDir()
+	taskDir := filepath.Join(tmpDir, "test-task")
+	if err := os.Mkdir(taskDir, 0755); err != nil {
+		t.Fatalf("failed to create task dir: %v", err)
+	}
+
+	env := &Environment{
+		ProjectDir: tmpDir,
+		Config: Config{
+			ClaudeCommand: "codex",
+			ResetCommand:  "true",
+		},
+		Tasks: map[string]Task{
+			"test-task": {
+				Name:            "test-task",
+				Dir:             taskDir,
+				CandidateSource: `printf '["candidate"]\n'`,
+				Prompt:          "fix {{.}}",
+				Timeout:         time.Hour,
+			},
+		},
+	}
+
+	runner, err := NewRunner(env, "test-task", RunnerOptions{DryRun: true, Verbose: true})
+	if err != nil {
+		t.Fatalf("NewRunner failed: %v", err)
+	}
+
+	output := captureStdout(t, func() {
+		if err := runner.Run(); err != nil {
+			t.Fatalf("Run failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "Codex command: codex exec --json --yolo - <<") {
+		t.Fatalf("verbose dry-run output missing Codex --yolo command preview:\n%s", output)
+	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = w
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close stdout pipe: %v", err)
+	}
+	os.Stdout = oldStdout
+
+	output, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	return string(output)
 }
 
 func TestRateLimitError(t *testing.T) {
