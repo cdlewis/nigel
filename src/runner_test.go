@@ -226,6 +226,50 @@ func TestRateLimitError(t *testing.T) {
 	var _ error = err
 }
 
+func TestFindRateLimitMatchIncludesPhraseAndContext(t *testing.T) {
+	output := "before\nagent failed with HTTP 429 from provider\nafter"
+
+	match, ok := findRateLimitMatch(output, (&CodexBackend{}).RateLimitPhrases())
+	if !ok {
+		t.Fatal("expected rate limit match")
+	}
+	if match.phrase != "HTTP 429" {
+		t.Fatalf("phrase = %q, want HTTP 429", match.phrase)
+	}
+	if !strings.Contains(match.context, "HTTP 429") {
+		t.Fatalf("context = %q, want matched output nearby", match.context)
+	}
+	if !strings.Contains(match.DebugString(), "HTTP 429") {
+		t.Fatalf("DebugString() = %q, want matched phrase", match.DebugString())
+	}
+}
+
+func TestFindRateLimitMatchIgnoresSourceLine429(t *testing.T) {
+	output := "src/37FE0.c:429:        func_80071824((s32)arg0, func_80038098);"
+
+	if _, ok := findRateLimitMatch(output, (&CodexBackend{}).RateLimitPhrases()); ok {
+		t.Fatal("source line number 429 should not be treated as a rate limit")
+	}
+}
+
+func TestFindRateLimitMatchSkipsEmptyPhrases(t *testing.T) {
+	if _, ok := findRateLimitMatch("normal output", []string{"", "rate_limit"}); ok {
+		t.Fatal("unexpected rate limit match")
+	}
+}
+
+func TestContextAroundTruncatesLongOutput(t *testing.T) {
+	output := strings.Repeat("a", 200) + "429" + strings.Repeat("b", 200)
+
+	context := contextAround(output, 200, 3, 40)
+	if !strings.HasPrefix(context, "...") || !strings.HasSuffix(context, "...") {
+		t.Fatalf("context = %q, want ellipses at both ends", context)
+	}
+	if !strings.Contains(context, "429") {
+		t.Fatalf("context = %q, want matched phrase", context)
+	}
+}
+
 func TestCandidateVerification(t *testing.T) {
 	tests := []struct {
 		name          string

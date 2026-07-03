@@ -63,11 +63,23 @@ func (s *SyncWriter) ResetColor() {
 
 // rateLimitError indicates the agent returned a rate limit message
 type rateLimitError struct {
-	msg string
+	msg     string
+	phrase  string
+	context string
 }
 
 func (e *rateLimitError) Error() string {
 	return e.msg
+}
+
+func (e *rateLimitError) DebugString() string {
+	if e.phrase == "" {
+		return ""
+	}
+	if e.context == "" {
+		return fmt.Sprintf("Rate limit detector matched phrase %q.", e.phrase)
+	}
+	return fmt.Sprintf("Rate limit detector matched phrase %q in captured agent output:\n%s", e.phrase, e.context)
 }
 
 // fatalError indicates an error that should stop execution immediately
@@ -300,6 +312,60 @@ func (r *Runner) effectiveTimeout() time.Duration {
 func commandPreview(command string) string {
 	line, _, _ := strings.Cut(command, "\n")
 	return line
+}
+
+func findRateLimitMatch(output string, phrases []string) (*rateLimitError, bool) {
+	for _, phrase := range phrases {
+		if phrase == "" {
+			continue
+		}
+		if idx := strings.Index(output, phrase); idx >= 0 {
+			return &rateLimitError{
+				phrase:  phrase,
+				context: contextAround(output, idx, len(phrase), 240),
+			}, true
+		}
+	}
+	return nil, false
+}
+
+func contextAround(s string, idx, matchLen, maxLen int) string {
+	if idx < 0 || idx > len(s) {
+		return ""
+	}
+	if matchLen < 0 {
+		matchLen = 0
+	}
+	if maxLen <= 0 || len(s) <= maxLen {
+		return s
+	}
+
+	half := maxLen / 2
+	start := idx - half
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxLen
+	minEnd := idx + matchLen
+	if end < minEnd {
+		end = minEnd
+	}
+	if end > len(s) {
+		end = len(s)
+		start = end - maxLen
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	context := s[start:end]
+	if start > 0 {
+		context = "..." + context
+	}
+	if end < len(s) {
+		context += "..."
+	}
+	return context
 }
 
 func (r *Runner) Run() error {
@@ -574,9 +640,17 @@ func (r *Runner) runIteration() (done bool, err error) {
 	}
 
 	// Check for rate limit in output
-	for _, phrase := range r.backend.RateLimitPhrases() {
-		if strings.Contains(agentOutput, phrase) {
-			return false, &rateLimitError{msg: r.backend.DisplayName() + " rate limit hit"}
+	if match, ok := findRateLimitMatch(agentOutput, r.backend.RateLimitPhrases()); ok {
+		if r.opts.Verbose {
+			fmt.Println(ColorWarning(match.DebugString()))
+			if r.agentLogger != nil {
+				fmt.Printf(ColorInfo("Full captured output is logged in %s\n"), r.agentLogger.Path())
+			}
+		}
+		return false, &rateLimitError{
+			msg:     r.backend.DisplayName() + " rate limit hit",
+			phrase:  match.phrase,
+			context: match.context,
 		}
 	}
 

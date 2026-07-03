@@ -75,7 +75,14 @@ func (b *CodexBackend) ProcessLine(line string) (string, bool) {
 }
 
 func (b *CodexBackend) RateLimitPhrases() []string {
-	return []string{"rate_limit", "429"}
+	return []string{
+		"rate_limit",
+		"rate limit",
+		"HTTP 429",
+		"status 429",
+		"429 Too Many Requests",
+		"Too Many Requests",
+	}
 }
 
 func (b *CodexBackend) DisplayName() string {
