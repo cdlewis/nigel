@@ -28,6 +28,10 @@ func (b *CodexBackend) BuildCommand(baseCmd, extraFlags, prompt string) string {
 		cmd = "codex exec"
 	}
 
+	if !hasFlag(cmd, "--yolo") && !hasFlag(extraFlags, "--yolo") {
+		extraFlags = strings.TrimSpace("--yolo " + strings.TrimSpace(extraFlags))
+	}
+
 	// codex exec --json reads the prompt from stdin when using "-"
 	// Heredoc avoids shell quoting issues
 	if extraFlags != "" {
@@ -36,6 +40,15 @@ func (b *CodexBackend) BuildCommand(baseCmd, extraFlags, prompt string) string {
 	}
 	return fmt.Sprintf("%s --json - <<'%s'\n%s\n%s",
 		cmd, delimiter, prompt, delimiter)
+}
+
+func hasFlag(s, flag string) bool {
+	for _, field := range strings.Fields(s) {
+		if field == flag {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *CodexBackend) ProcessLine(line string) (string, bool) {
