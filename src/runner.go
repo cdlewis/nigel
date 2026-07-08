@@ -675,11 +675,11 @@ func (r *Runner) runIteration() (done bool, err error) {
 
 	// Check for rate limit in output
 	if match, ok := findRateLimitMatch(agentOutput, r.backend.RateLimitPhrases()); ok {
-		if r.opts.Verbose {
-			fmt.Println(ColorWarning(match.DebugString()))
-			if r.agentLogger != nil {
-				fmt.Printf(ColorInfo("Full captured output is logged in %s\n"), r.agentLogger.Path())
-			}
+		// Always surface why the detector fired so false positives can be
+		// diagnosed without re-running in verbose mode.
+		fmt.Println(ColorWarning(match.DebugString()))
+		if r.agentLogger != nil {
+			fmt.Printf(ColorInfo("Full captured output is logged in %s\n"), r.agentLogger.Path())
 		}
 		return false, &rateLimitError{
 			msg:     r.backend.DisplayName() + " rate limit hit",
