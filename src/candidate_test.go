@@ -59,8 +59,8 @@ func TestParseCandidates(t *testing.T) {
 			expectedKey: []string{"single.go"},
 		},
 		{
-			name:        "newline-separated with special characters",
-			input:       `file with "quotes".go
+			name: "newline-separated with special characters",
+			input: `file with "quotes".go
 file's with apostrophe.go`,
 			expectedKey: []string{`file with "quotes".go`, `file's with apostrophe.go`},
 		},
@@ -283,6 +283,54 @@ func TestFilterByPartition(t *testing.T) {
 
 		if total != len(largeCandidates) {
 			t.Errorf("10-way partitions total %d, want %d", total, len(largeCandidates))
+		}
+	})
+
+	t.Run("array candidates partition by first element", func(t *testing.T) {
+		arrayCandidates, err := ParseCandidates([]byte(`[
+			["file1.go", "line 10"],
+			["file1.go", "line 20"],
+			["file2.go", "line 10"]
+		]`))
+		if err != nil {
+			t.Fatalf("ParseCandidates failed: %v", err)
+		}
+
+		if arrayCandidates[0].Key == arrayCandidates[1].Key {
+			t.Fatal("test setup expected distinct candidate keys")
+		}
+		if arrayCandidates[0].PartitionKey() != "file1.go" || arrayCandidates[1].PartitionKey() != "file1.go" {
+			t.Fatalf("expected first two candidates to partition by file1.go, got %q and %q",
+				arrayCandidates[0].PartitionKey(), arrayCandidates[1].PartitionKey())
+		}
+
+		var file1Shard = -1
+		for i := 0; i < 4; i++ {
+			partition := FilterByPartition(arrayCandidates, HashPartition{WorkerCount: 4, WorkerIndex: i})
+			seenFirst := false
+			seenSecond := false
+			for _, c := range partition {
+				switch c.Key {
+				case arrayCandidates[0].Key:
+					seenFirst = true
+				case arrayCandidates[1].Key:
+					seenSecond = true
+				}
+			}
+
+			if seenFirst != seenSecond {
+				t.Fatalf("file1.go candidates split across shards; shard %d has first=%v second=%v", i, seenFirst, seenSecond)
+			}
+			if seenFirst {
+				if file1Shard != -1 {
+					t.Fatalf("file1.go candidates appeared in multiple shards: %d and %d", file1Shard, i)
+				}
+				file1Shard = i
+			}
+		}
+
+		if file1Shard == -1 {
+			t.Fatal("file1.go candidates did not appear in any shard")
 		}
 	})
 }

@@ -257,6 +257,31 @@ func rawToString(raw json.RawMessage) string {
 	return string(raw)
 }
 
+// PartitionKey returns the value used for sharding.
+// Array candidates are partitioned by their first element so related work, such
+// as multiple diagnostics for the same file, stays on the same shard.
+func (c *Candidate) PartitionKey() string {
+	if !c.IsArray() {
+		return c.Key
+	}
+
+	var arr []json.RawMessage
+	if err := json.Unmarshal(c.Data, &arr); err != nil || len(arr) == 0 {
+		return c.Key
+	}
+
+	var str string
+	if err := json.Unmarshal(arr[0], &str); err == nil {
+		return str
+	}
+
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, arr[0]); err != nil {
+		return rawToString(arr[0])
+	}
+	return buf.String()
+}
+
 // FilterByPartition filters candidates by MD5 hash modulo.
 func FilterByPartition(candidates []Candidate, partition HashPartition) []Candidate {
 	if partition.WorkerCount <= 1 {
@@ -265,7 +290,7 @@ func FilterByPartition(candidates []Candidate, partition HashPartition) []Candid
 
 	filtered := make([]Candidate, 0, len(candidates)/partition.WorkerCount)
 	for _, c := range candidates {
-		hash := md5.Sum([]byte(c.Key))
+		hash := md5.Sum([]byte(c.PartitionKey()))
 		hashUint64 := binary.LittleEndian.Uint64(hash[:8])
 
 		if int(hashUint64%uint64(partition.WorkerCount)) == partition.WorkerIndex {
