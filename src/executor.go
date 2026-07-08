@@ -61,12 +61,25 @@ func RunCandidateSource(source, workDir string, extraEnv ...[]string) ([]byte, e
 		env = extraEnv[0]
 	}
 	cmd.Env = commandEnv(env)
+	// Run in its own process group so terminal-generated signals (SIGQUIT,
+	// SIGINT) are delivered to nigel rather than killing the candidate source
+	// mid-run. Without this, a graceful-stop (Ctrl+\) during the re-check would
+	// kill the candidate source and surface as a spurious failure. Track the
+	// process so SIGINT can still tear it down via KillRunningProcess.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("candidate source failed: %w\nstderr: %s", err, stderr.String())
+	}
+	runningProcess = cmd.Process
+	err := cmd.Wait()
+	runningProcess = nil
+
+	if err != nil {
 		return nil, fmt.Errorf("candidate source failed: %w\nstderr: %s", err, stderr.String())
 	}
 

@@ -764,3 +764,40 @@ func TestMockCommandExecutor(t *testing.T) {
 		}
 	})
 }
+
+func TestInterruptibleSleepReturnsImmediatelyOnStop(t *testing.T) {
+	r := &Runner{stopCh: make(chan struct{})}
+
+	// Without a stop signal, a tiny sleep completes normally.
+	if r.interruptibleSleep(10 * time.Millisecond) {
+		t.Fatal("expected sleep to complete, not be interrupted")
+	}
+
+	// Requesting stop wakes a long sleep immediately.
+	r.requestStop()
+	start := time.Now()
+	interrupted := r.interruptibleSleep(10 * time.Second)
+	elapsed := time.Since(start)
+	if !interrupted {
+		t.Fatal("expected sleep to be interrupted by stop")
+	}
+	if elapsed > time.Second {
+		t.Fatalf("interruptibleSleep did not wake promptly; elapsed=%v", elapsed)
+	}
+	if !r.stopRequested {
+		t.Fatal("expected stopRequested to be set")
+	}
+}
+
+func TestRequestStopIsIdempotent(t *testing.T) {
+	r := &Runner{stopCh: make(chan struct{})}
+	r.requestStop()
+	r.requestStop() // closing the channel twice must not panic
+	r.requestStop()
+
+	select {
+	case <-r.stopCh:
+	default:
+		t.Fatal("expected stopCh to be closed")
+	}
+}

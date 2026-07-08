@@ -251,9 +251,29 @@ type Runner struct {
 	agentLogger   *AgentLogger
 	agentStats    *SessionStats
 	stopRequested bool
+	stopCh        chan struct{}
+	stopOnce      sync.Once
 	backoffLevel  int
 	executor      CommandExecutor
 	backend       Backend
+}
+
+// requestStop signals a graceful stop. Safe to call multiple times; the channel
+// is closed exactly once. After it returns, interruptible sleeps wake up.
+func (r *Runner) requestStop() {
+	r.stopRequested = true
+	r.stopOnce.Do(func() { close(r.stopCh) })
+}
+
+// interruptibleSleep blocks for d unless a graceful stop is requested, in which
+// case it returns true immediately.
+func (r *Runner) interruptibleSleep(d time.Duration) bool {
+	select {
+	case <-time.After(d):
+		return false
+	case <-r.stopCh:
+		return true
+	}
 }
 
 func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, error) {
@@ -294,6 +314,7 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 		agentStats:  NewSessionStats(),
 		executor:    &RealCommandExecutor{},
 		backend:     nil, // resolved in Run() after command precedence is established
+		stopCh:      make(chan struct{}),
 	}, nil
 }
 
@@ -396,7 +417,7 @@ func (r *Runner) Run() error {
 		switch sig {
 		case syscall.SIGQUIT:
 			fmt.Println("\n[Ctrl+\\] Graceful stop requested, will finish current iteration...")
-			r.stopRequested = true
+			r.requestStop()
 		case syscall.SIGINT, syscall.SIGTERM:
 			fmt.Println("\nInterrupted, cleaning up...")
 			KillRunningProcess()
@@ -452,6 +473,13 @@ func (r *Runner) Run() error {
 		if err != nil {
 			fmt.Println(ColorError(fmt.Sprintf("Error: %v", err)))
 
+			// If a graceful stop was requested (e.g. the candidate source was
+			// interrupted by the stop signal), don't back off — just stop.
+			if r.stopRequested {
+				fmt.Println("Stopped by user request.")
+				break
+			}
+
 			// Check if it's a fatal error - stop immediately
 			if _, isFatal := err.(*fatalError); isFatal {
 				fmt.Println(ColorError("Fatal error, stopping."))
@@ -461,13 +489,19 @@ func (r *Runner) Run() error {
 			// Check if it's a rate limit error
 			if _, isRateLimit := err.(*rateLimitError); isRateLimit {
 				fmt.Println(ColorWarning(fmt.Sprintf("Rate limit hit, sleeping for %s...", rateLimitBackoff)))
-				time.Sleep(rateLimitBackoff)
+				if r.interruptibleSleep(rateLimitBackoff) {
+					fmt.Println("Stopped by user request.")
+					break
+				}
 				r.backoffLevel = 0
 			} else {
 				// Exponential backoff for other errors
 				backoff := calculateBackoff(r.backoffLevel)
 				fmt.Println(ColorWarning(fmt.Sprintf("Sleeping for %s (backoff level %d)...", backoff, r.backoffLevel)))
-				time.Sleep(backoff)
+				if r.interruptibleSleep(backoff) {
+					fmt.Println("Stopped by user request.")
+					break
+				}
 				r.backoffLevel++
 			}
 			continue

@@ -671,6 +671,34 @@ func TestRunCandidateSourceReceivesTimeoutEnv(t *testing.T) {
 	}
 }
 
+// TestRunCandidateSourceRunsInOwnProcessGroup verifies the candidate source is
+// started in its own process group (Setpgid). Without this, a terminal-generated
+// SIGQUIT/SIGINT during the re-check would kill the candidate source directly,
+// surfacing as a spurious failure and triggering backoff even though nigel's
+// signal handler only intended a graceful stop.
+func TestRunCandidateSourceRunsInOwnProcessGroup(t *testing.T) {
+	// Child reports its own process-group ID and its parent's. With Setpgid the
+	// child is its own group leader, so the two differ.
+	source := `child_pgid=$(ps -o pgid= -p $$ | tr -d ' ')
+parent_pgid=$(ps -o pgid= -p $PPID | tr -d ' ')
+printf '%s:%s' "$child_pgid" "$parent_pgid"`
+	output, err := RunCandidateSource(source, ".")
+	if err != nil {
+		t.Fatalf("RunCandidateSource() error = %v", err)
+	}
+	parts := strings.Split(string(output), ":")
+	if len(parts) != 2 {
+		t.Fatalf("output = %q, want child_pgid:parent_pgid", output)
+	}
+	if parts[0] == "" || parts[1] == "" {
+		t.Fatalf("output = %q, got empty pgid", output)
+	}
+	if parts[0] == parts[1] {
+		t.Fatalf("candidate source shares nigel's process group (child pgid=%s == parent pgid=%s); "+
+			"terminal signals would kill it mid-run", parts[0], parts[1])
+	}
+}
+
 type envBackend struct{}
 
 func (b envBackend) BuildCommand(baseCmd, extraFlags, prompt string) string {
