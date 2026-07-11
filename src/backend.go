@@ -5,7 +5,10 @@ import "strings"
 // Backend abstracts an AI command backend (Claude, Codex, etc.).
 type Backend interface {
 	// BuildCommand constructs the shell command string to execute.
-	BuildCommand(baseCmd, extraFlags, prompt string) string
+	// The prompt is intentionally not part of this string - it is passed to the
+	// process via stdin so that untrusted candidate/prompt content is never
+	// parsed by the shell (see RunAICommand).
+	BuildCommand(baseCmd, extraFlags string) string
 	// ProcessLine parses one line of JSON output from the backend.
 	// Returns text to stream to the terminal/log, and whether the session is complete.
 	ProcessLine(line string) (streamText string, sessionDone bool)
