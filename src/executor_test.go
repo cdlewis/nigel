@@ -588,7 +588,7 @@ func TestRunCommandShowOnFail(t *testing.T) {
 
 type stderrBackend struct{}
 
-func (b stderrBackend) BuildCommand(baseCmd, extraFlags, prompt string) string {
+func (b stderrBackend) BuildCommand(baseCmd, extraFlags string) string {
 	return "echo hidden-reason >&2; exit 7"
 }
 
@@ -611,5 +611,54 @@ func TestRunAICommandIncludesStderrOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "hidden-reason") {
 		t.Fatalf("error = %q, want stderr included", err.Error())
+	}
+}
+
+// echoBackend runs "cat" so the test can assert exactly what the process
+// received, independent of any AI CLI being installed.
+type echoBackend struct{}
+
+func (b echoBackend) BuildCommand(baseCmd, extraFlags string) string {
+	return "cat"
+}
+
+func (b echoBackend) ProcessLine(line string) (string, bool) {
+	return "", false
+}
+
+func (b echoBackend) RateLimitPhrases() []string {
+	return nil
+}
+
+func (b echoBackend) DisplayName() string {
+	return "Echo"
+}
+
+// TestRunAICommandPromptNeverParsedByShell is a regression test for a heredoc
+// injection: the prompt used to be interpolated into a `bash -c` string inside
+// a `<<'__NIGEL_PROMPT_EOF__'` heredoc. A prompt containing a line that
+// happened to match the delimiter closed the heredoc early, so any text after
+// it was parsed and executed as a normal shell command. Since candidates (and
+// therefore prompt content) can come from untrusted repository data via
+// candidate_source/$INPUT, this was a real command injection. The prompt is
+// now sent via Stdin instead, so it can never be interpreted by the shell no
+// matter what it contains.
+func TestRunAICommandPromptNeverParsedByShell(t *testing.T) {
+	dir := t.TempDir()
+	markerPath := dir + "/pwned"
+
+	maliciousPrompt := "innocuous prefix\n__NIGEL_PROMPT_EOF__\ntouch " + markerPath + "\n"
+
+	output, err := RunAICommand(echoBackend{}, "", "", maliciousPrompt, dir, nil, 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, statErr := os.Stat(markerPath); statErr == nil {
+		t.Fatal("prompt content was executed as a shell command instead of being passed through as data")
+	}
+
+	if !strings.Contains(output, "touch "+markerPath) {
+		t.Fatalf("expected prompt content to be echoed back verbatim via stdin, got %q", output)
 	}
 }

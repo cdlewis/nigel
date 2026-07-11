@@ -61,18 +61,23 @@ func KillRunningProcess() {
 // The streamCb callback is invoked for each chunk of text received.
 // Returns the accumulated output (for rate limit detection) and any error.
 func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, logWriter io.Writer, timeout time.Duration, streamCb StreamCallback) (string, error) {
-	// Build the command via the backend
-	cmdStr := backend.BuildCommand(baseCmd, extraFlags, prompt)
+	// Build the command via the backend. The prompt is deliberately excluded
+	// from this string - it previously was interpolated into a shell heredoc,
+	// which let candidate/prompt content containing a line matching the
+	// heredoc delimiter break out of the heredoc and inject arbitrary shell
+	// commands. Passing it via Stdin below avoids the shell parsing it at all.
+	cmdStr := backend.BuildCommand(baseCmd, extraFlags)
 
 	// Log the exact command being executed (for debugging hangs)
 	if logWriter != nil {
-		fmt.Fprintf(logWriter, "Command: %s\n", cmdStr)
+		fmt.Fprintf(logWriter, "Command: %s\nPrompt (sent via stdin):\n%s\n", cmdStr, prompt)
 	}
 
 	args := []string{"-c", cmdStr}
 
 	cmd := exec.Command("bash", args...)
 	cmd.Dir = workDir
+	cmd.Stdin = strings.NewReader(prompt)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid:   true,
 		Pdeathsig: syscall.SIGTERM,

@@ -30,16 +30,15 @@ type ClaudeBackend struct {
 	messageHasContent bool
 }
 
-func (b *ClaudeBackend) BuildCommand(baseCmd, extraFlags, prompt string) string {
-	const delimiter = "__NIGEL_PROMPT_EOF__"
+func (b *ClaudeBackend) BuildCommand(baseCmd, extraFlags string) string {
 	jsonFlags := "--print --output-format stream-json --include-partial-messages --verbose"
 
+	// "-p" with no argument makes claude read the prompt from stdin, which
+	// RunAICommand supplies directly - the prompt never passes through the shell.
 	if extraFlags != "" {
-		return fmt.Sprintf("%s %s %s -p <<'%s'\n%s\n%s",
-			baseCmd, jsonFlags, extraFlags, delimiter, prompt, delimiter)
+		return fmt.Sprintf("%s %s %s -p", baseCmd, jsonFlags, extraFlags)
 	}
-	return fmt.Sprintf("%s %s -p <<'%s'\n%s\n%s",
-		baseCmd, jsonFlags, delimiter, prompt, delimiter)
+	return fmt.Sprintf("%s %s -p", baseCmd, jsonFlags)
 }
 
 func (b *ClaudeBackend) ProcessLine(line string) (string, bool) {
