@@ -191,6 +191,57 @@ func TestVerboseDryRunShowsCodexCommandWithYolo(t *testing.T) {
 	}
 }
 
+func TestNewRunnerUsesExplicitIgnorePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	taskDir := filepath.Join(tmpDir, "test-task")
+	if err := os.Mkdir(taskDir, 0755); err != nil {
+		t.Fatalf("failed to create task dir: %v", err)
+	}
+
+	sharedPath := filepath.Join(tmpDir, "shared.log")
+	if err := os.WriteFile(sharedPath, []byte("shared\n"), 0644); err != nil {
+		t.Fatalf("failed to create shared log: %v", err)
+	}
+
+	env := &Environment{
+		ProjectDir: tmpDir,
+		Config:     Config{Agent: "true"},
+		Tasks: map[string]Task{
+			"test-task": {
+				Name:            "test-task",
+				Dir:             taskDir,
+				CandidateSource: `printf '["candidate"]\n'`,
+				Prompt:          "fix {{.}}",
+				Timeout:         time.Hour,
+				IgnoreList:      `printf 'command-only\n'`,
+			},
+		},
+	}
+
+	runner, err := NewRunner(env, "test-task", RunnerOptions{DryRun: true, IgnorePath: sharedPath})
+	if err != nil {
+		t.Fatalf("NewRunner failed: %v", err)
+	}
+
+	if !runner.ignoredList.Contains("shared") {
+		t.Error("expected runner to load explicit shared ignore path")
+	}
+	if runner.ignoredList.Contains("command-only") {
+		t.Error("expected explicit ignore path to take precedence over task ignore_list command")
+	}
+
+	if err := runner.ignoredList.Add("new"); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+	content, err := os.ReadFile(sharedPath)
+	if err != nil {
+		t.Fatalf("failed to read shared log: %v", err)
+	}
+	if string(content) != "shared\nnew\n" {
+		t.Errorf("shared log = %q, want %q", string(content), "shared\nnew\n")
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 

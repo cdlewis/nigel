@@ -311,6 +311,10 @@ type IgnoredList struct {
 
 func NewIgnoredList(taskDir string) (*IgnoredList, error) {
 	path := filepath.Join(taskDir, "ignored.log")
+	return NewIgnoredListFromPath(path)
+}
+
+func NewIgnoredListFromPath(path string) (*IgnoredList, error) {
 	entries := make(map[string]bool)
 	attempts := make(map[string]int)
 

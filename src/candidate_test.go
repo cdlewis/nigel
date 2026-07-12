@@ -388,6 +388,34 @@ func TestIgnoredList(t *testing.T) {
 		}
 	})
 
+	t.Run("explicit path loads and appends", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "shared.log")
+		if err := os.WriteFile(path, []byte("existing\n"), 0644); err != nil {
+			t.Fatalf("failed to create shared log: %v", err)
+		}
+
+		list, err := NewIgnoredListFromPath(path)
+		if err != nil {
+			t.Fatalf("NewIgnoredListFromPath failed: %v", err)
+		}
+		if !list.Contains("existing") {
+			t.Error("expected existing key to be ignored")
+		}
+
+		if err := list.Add("new"); err != nil {
+			t.Fatalf("Add failed: %v", err)
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("failed to read shared log: %v", err)
+		}
+		if string(content) != "existing\nnew\n" {
+			t.Errorf("file content = %q, want %q", string(content), "existing\nnew\n")
+		}
+	})
+
 	t.Run("empty directory creates new list", func(t *testing.T) {
 		dir := t.TempDir()
 

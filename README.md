@@ -102,6 +102,9 @@ nigel mytask --shard 2/4  # Terminal 2 (second of 4 workers)
 nigel mytask --shard 3/4  # Terminal 3
 nigel mytask --shard 4/4  # Terminal 4
 
+# Shard 1 publishes the shared ignore-list path over localhost.
+# Start shard 1 first; other same-machine shards fetch the path once.
+
 # Override task settings temporarily
 nigel mytask --task-timeout 5m      # Per-candidate timeout
 nigel mytask --agent "~/custom/claude"
@@ -180,7 +183,7 @@ This is different from the `--time-limit` CLI flag which applies to the entire t
 
 ## Candidate Sources
 
-A candidate source is a command that outputs JSON - a list of things for Nigel to work through. Candidates are evaluated in order and re-generated between runs. Once a candidate has been processed, it won't be retried (tracked via `ignore.log` in your task directory - remove entries to retry them).
+A candidate source is a command that outputs JSON - a list of things for Nigel to work through. Candidates are evaluated in order and re-generated between runs. Once a candidate has been processed, it won't be retried (tracked via `ignored.log` in your task directory, or `ignored.shared.log` for same-machine sharded runs - remove entries to retry them).
 
 Three output formats are supported:
 

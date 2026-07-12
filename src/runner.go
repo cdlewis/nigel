@@ -241,6 +241,7 @@ type RunnerOptions struct {
 	AgentFlags       string        // Additional agent flags (overrides task.yaml)
 	OffPeakOnly      bool          // Only run during off-peak hours
 	ChinaOffPeakOnly bool          // Only run during China off-peak hours
+	IgnorePath       string        // File-backed ignore list path override
 }
 
 type Runner struct {
@@ -285,7 +286,9 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 	// Create ignore list from command, file, or nil (no filtering)
 	var ignoredList *IgnoredList
 	var err error
-	if task.IgnoreList != "" {
+	if opts.IgnorePath != "" {
+		ignoredList, err = NewIgnoredListFromPath(opts.IgnorePath)
+	} else if task.IgnoreList != "" {
 		ignoredList, err = NewIgnoredListFromCommand(task.IgnoreList, task.Dir)
 	} else {
 		ignoredList, err = NewIgnoredList(task.Dir)

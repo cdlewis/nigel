@@ -67,6 +67,8 @@ func main() {
 
 	// Parse and validate shard flag (1-based indexing: 1/N through N/N)
 	var partition HashPartition = NoFilter()
+	var discoveryServer *shardDiscoveryServer
+	var sharedIgnorePath string
 	if *shardFlag != "" {
 		parts := strings.Split(*shardFlag, "/")
 		if len(parts) != 2 {
@@ -80,6 +82,29 @@ func main() {
 			os.Exit(1)
 		}
 		partition = HashPartition{WorkerCount: total, WorkerIndex: index - 1} // Convert to 0-based internally
+
+		task, ok := env.Tasks[taskName]
+		if !ok {
+			fmt.Fprintln(os.Stderr, ColorError(fmt.Sprintf("Error: task not found: %s", taskName)))
+			os.Exit(1)
+		}
+		if total > 1 {
+			if index == 1 {
+				sharedIgnorePath = defaultSharedIgnorePath(task.Dir, total)
+				discoveryServer, err = startShardDiscoveryServer(env.ProjectDir, taskName, total, sharedIgnorePath)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, ColorError(fmt.Sprintf("Error: %v", err)))
+					os.Exit(1)
+				}
+				defer discoveryServer.Close()
+			} else {
+				sharedIgnorePath, err = queryShardIgnorePath(env.ProjectDir, taskName, total, 30*time.Second)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, ColorError(fmt.Sprintf("Error: %v", err)))
+					os.Exit(1)
+				}
+			}
+		}
 	}
 
 	agent := resolveAlias(*agentFlag, *claudeCommandFlag)
@@ -97,6 +122,7 @@ func main() {
 		AgentFlags:       agentFlags,
 		OffPeakOnly:      *offPeakOnlyFlag,
 		ChinaOffPeakOnly: *chinaOffPeakOnlyFlag,
+		IgnorePath:       sharedIgnorePath,
 	}
 
 	runner, err := NewRunner(env, taskName, opts)
