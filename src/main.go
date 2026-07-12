@@ -91,12 +91,14 @@ func main() {
 		if total > 1 {
 			if index == 1 {
 				sharedIgnorePath = defaultSharedIgnorePath(task.Dir, total)
-				discoveryServer, err = startShardDiscoveryServer(env.ProjectDir, taskName, total, sharedIgnorePath)
+				discoveryServer, sharedIgnorePath, err = startOrQueryShardDiscovery(env.ProjectDir, taskName, total, sharedIgnorePath, 1*time.Second)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, ColorError(fmt.Sprintf("Error: %v", err)))
 					os.Exit(1)
 				}
-				defer discoveryServer.Close()
+				if discoveryServer != nil {
+					defer discoveryServer.Close()
+				}
 			} else {
 				sharedIgnorePath, err = queryShardIgnorePath(env.ProjectDir, taskName, total, 30*time.Second)
 				if err != nil {

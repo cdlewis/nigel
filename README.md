@@ -103,7 +103,8 @@ nigel mytask --shard 3/4  # Terminal 3
 nigel mytask --shard 4/4  # Terminal 4
 
 # Shard 1 publishes the shared ignore-list path over localhost.
-# Start shard 1 first; other same-machine shards fetch the path once.
+# Start shard 1 first; other same-machine shards fetch the path once,
+# even if they use a different shard total later.
 
 # Override task settings temporarily
 nigel mytask --task-timeout 5m      # Per-candidate timeout
