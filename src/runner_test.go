@@ -303,6 +303,15 @@ func TestFindRateLimitMatchIgnoresSourceLine429(t *testing.T) {
 	}
 }
 
+func TestFindRateLimitMatchIgnoresOrdinaryRateLimitWords(t *testing.T) {
+	output := `{"type":"item.completed","item":{"type":"command_execution","aggregated_output":"{\"body\":\"The separate limit carrier confirmed an extra frame quantum.\"}"}}` + "\n" +
+		`{"type":"item.completed","item":{"type":"agent_message","text":"The rate limit hypothesis was ruled out."}}`
+
+	if match, ok := findRateLimitMatch(output, (&CodexBackend{}).RateLimitPhrases()); ok {
+		t.Fatalf("ordinary words should not be treated as a rate limit: %s", match.DebugString())
+	}
+}
+
 func TestFindRateLimitMatchSkipsEmptyPhrases(t *testing.T) {
 	if _, ok := findRateLimitMatch("normal output", []string{"", "rate_limit"}); ok {
 		t.Fatal("unexpected rate limit match")
