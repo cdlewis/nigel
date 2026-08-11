@@ -144,6 +144,7 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 
 	go func() {
 		var fullOutput strings.Builder
+		rateLimitFilter, filtersRateLimitOutput := backend.(rateLimitOutputFilter)
 		scanner := bufio.NewScanner(stdoutPipe)
 		scanner.Buffer(nil, 10*1024*1024) // 10MB max token size
 
@@ -158,7 +159,15 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 				if logWriter != nil {
 					fmt.Fprint(logWriter, text)
 				}
-				fullOutput.WriteString(text)
+				if !filtersRateLimitOutput {
+					fullOutput.WriteString(text)
+				}
+			}
+			if filtersRateLimitOutput {
+				if rateLimitText := rateLimitFilter.RateLimitText(line); rateLimitText != "" {
+					fullOutput.WriteString(rateLimitText)
+					fullOutput.WriteByte('\n')
+				}
 			}
 			if done {
 				// Drain remaining output to avoid blocking the process
@@ -174,7 +183,9 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 			if text == "" && logWriter != nil {
 				fmt.Fprintln(logWriter, line)
 			}
-			fullOutput.WriteString(line + "\n")
+			if !filtersRateLimitOutput {
+				fullOutput.WriteString(line + "\n")
+			}
 		}
 
 		// Add a final newline after streaming is complete
@@ -183,11 +194,6 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 		}
 		if logWriter != nil {
 			fmt.Fprintln(logWriter)
-		}
-
-		// Include stderr in output for rate limit detection
-		if stderrBuf.Len() > 0 {
-			fullOutput.WriteString(stderrBuf.String())
 		}
 
 		resultCh <- streamResult{
@@ -208,9 +214,10 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 		case <-time.After(timeout):
 			KillRunningProcess()
 			runningProcess = nil
-			// Wait for the stream reader to finish
+			// Wait for both process I/O writers before reading their buffers.
+			<-done
 			result := <-resultCh
-			return result.fullOutput, &timeoutError{duration: timeout}
+			return result.fullOutput + stderrBuf.String(), &timeoutError{duration: timeout}
 		case waitErr = <-done:
 			runningProcess = nil
 		}
@@ -221,14 +228,15 @@ func RunAICommand(backend Backend, baseCmd, extraFlags, prompt, workDir string, 
 
 	// Get the full output from the stream reader
 	result := <-resultCh
+	fullOutput := result.fullOutput + stderrBuf.String()
 	if result.err != nil {
-		return result.fullOutput, result.err
+		return fullOutput, result.err
 	}
 	if waitErr != nil && stderrBuf.Len() > 0 {
-		return result.fullOutput, fmt.Errorf("%w\nstderr: %s", waitErr, strings.TrimSpace(stderrBuf.String()))
+		return fullOutput, fmt.Errorf("%w\nstderr: %s", waitErr, strings.TrimSpace(stderrBuf.String()))
 	}
 
-	return result.fullOutput, waitErr
+	return fullOutput, waitErr
 }
 
 // Regex patterns for $INPUT interpolation

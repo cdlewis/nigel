@@ -615,6 +615,54 @@ func TestRunAICommandIncludesStderrOnFailure(t *testing.T) {
 	}
 }
 
+type filteredRateLimitBackend struct {
+	errorEvent bool
+}
+
+func (b filteredRateLimitBackend) BuildCommand(baseCmd, extraFlags, prompt string) string {
+	if b.errorEvent {
+		return `printf '%s\n' '{"type":"turn.failed","error":{"message":"rate_limit exceeded"}}'`
+	}
+	return `printf '%s\n' '{"type":"item.completed","text":"generate_rate_limit_variants.sh"}' '{"type":"turn.completed"}'`
+}
+
+func (b filteredRateLimitBackend) ProcessLine(line string) (string, bool) {
+	return line, strings.Contains(line, `"type":"turn.failed"`) || strings.Contains(line, `"type":"turn.completed"`)
+}
+
+func (b filteredRateLimitBackend) RateLimitPhrases() []string {
+	return []string{"rate_limit"}
+}
+
+func (b filteredRateLimitBackend) RateLimitText(line string) string {
+	if strings.Contains(line, `"type":"turn.failed"`) {
+		return line
+	}
+	return ""
+}
+
+func (b filteredRateLimitBackend) DisplayName() string {
+	return "Filtered"
+}
+
+func TestRunAICommandFiltersStructuredRateLimitOutput(t *testing.T) {
+	output, err := RunAICommand(filteredRateLimitBackend{}, "", "", "", ".", nil, 0, nil, nil)
+	if err != nil {
+		t.Fatalf("successful RunAICommand() error = %v", err)
+	}
+	if _, ok := findRateLimitMatch(output, []string{"rate_limit"}); ok {
+		t.Fatalf("successful event payload leaked into rate-limit output: %q", output)
+	}
+
+	output, err = RunAICommand(filteredRateLimitBackend{errorEvent: true}, "", "", "", ".", nil, 0, nil, nil)
+	if err != nil {
+		t.Fatalf("error-event RunAICommand() error = %v", err)
+	}
+	if _, ok := findRateLimitMatch(output, []string{"rate_limit"}); !ok {
+		t.Fatalf("terminal error event was not captured: %q", output)
+	}
+}
+
 func TestTimeoutEnv(t *testing.T) {
 	deadline := time.Unix(1234567890, 0)
 	if got := timeoutEnv(0, deadline); got != nil {

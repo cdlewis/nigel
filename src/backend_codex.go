@@ -67,8 +67,6 @@ func (b *CodexBackend) ProcessLine(line string) (string, bool) {
 		return "", true
 	case "turn.failed":
 		return "", true
-	case "error":
-		return "", true
 	}
 
 	return "", false
@@ -76,12 +74,28 @@ func (b *CodexBackend) ProcessLine(line string) (string, bool) {
 
 func (b *CodexBackend) RateLimitPhrases() []string {
 	return []string{
+		"You've hit your usage limit",
 		"rate_limit",
 		"HTTP 429",
 		"status 429",
 		"429 Too Many Requests",
 		"Too Many Requests",
 	}
+}
+
+// RateLimitText excludes successful Codex events, including agent messages and
+// command output. A terminal turn.failed record describes a failed Codex turn;
+// error records can be transient retry notices. Stderr is captured separately
+// by RunAICommand for failures outside the JSONL protocol.
+func (b *CodexBackend) RateLimitText(line string) string {
+	var ev codexEvent
+	if json.Unmarshal([]byte(line), &ev) != nil {
+		return ""
+	}
+	if ev.Type == "turn.failed" {
+		return line
+	}
+	return ""
 }
 
 func (b *CodexBackend) DisplayName() string {

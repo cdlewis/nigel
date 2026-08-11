@@ -15,6 +15,13 @@ type Backend interface {
 	DisplayName() string
 }
 
+// rateLimitOutputFilter lets structured backends select only protocol records
+// that can represent backend errors. This prevents agent messages and tool
+// output from being mistaken for rate-limit responses.
+type rateLimitOutputFilter interface {
+	RateLimitText(line string) string
+}
+
 // NewBackend auto-detects the backend from the command name.
 // If baseCmd starts with "codex", returns the Codex backend; otherwise Claude.
 func NewBackend(baseCmd string) Backend {
