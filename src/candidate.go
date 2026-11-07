@@ -311,16 +311,24 @@ type IgnoredList struct {
 
 func NewIgnoredList(taskDir string) (*IgnoredList, error) {
 	path := filepath.Join(taskDir, "ignored.log")
-	return NewIgnoredListFromPath(path)
+	return NewIgnoredListFromPath(path,
+		filepath.Join(taskDir, "ignored.shared.log"),
+		filepath.Join(taskDir, "shared.ignored.log"))
 }
 
-func NewIgnoredListFromPath(path string) (*IgnoredList, error) {
+// NewIgnoredListFromPath reads all supplied logs, but appends new entries only to path.
+func NewIgnoredListFromPath(path string, additionalPaths ...string) (*IgnoredList, error) {
 	entries := make(map[string]bool)
 	attempts := make(map[string]int)
 
-	file, err := os.Open(path)
-	if err == nil {
-		defer file.Close()
+	for _, readPath := range append([]string{path}, additionalPaths...) {
+		file, err := os.Open(readPath)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to open ignored list %q: %w", readPath, err)
+		}
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
@@ -329,11 +337,10 @@ func NewIgnoredListFromPath(path string) (*IgnoredList, error) {
 				attempts[line] = 1 // Existing entries count as 1 attempt
 			}
 		}
+		file.Close()
 		if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("failed to read ignored list: %w", err)
+			return nil, fmt.Errorf("failed to read ignored list %q: %w", readPath, err)
 		}
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to open ignored list: %w", err)
 	}
 
 	return &IgnoredList{

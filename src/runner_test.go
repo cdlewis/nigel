@@ -191,6 +191,55 @@ func TestVerboseDryRunShowsCodexCommandWithYolo(t *testing.T) {
 	}
 }
 
+func TestNewRunnerCombinesIgnoreLogs(t *testing.T) {
+	for _, sharedName := range []string{"ignored.shared.log", "shared.ignored.log"} {
+		for _, sharded := range []bool{false, true} {
+			for _, repeat := range []int{0, 3} {
+				t.Run(fmt.Sprintf("%s/sharded=%t/repeat=%d", sharedName, sharded, repeat), func(t *testing.T) {
+					dir := t.TempDir()
+					sharedPath := filepath.Join(dir, sharedName)
+					if err := os.WriteFile(sharedPath, []byte(" shared \n\ncommon\n"), 0644); err != nil {
+						t.Fatal(err)
+					}
+					// A shared log must work even before a local log exists.
+					for _, withLocal := range []bool{false, true} {
+						if withLocal {
+							if err := os.WriteFile(filepath.Join(dir, "ignored.log"), []byte("local\ncommon\n"), 0644); err != nil {
+								t.Fatal(err)
+							}
+						}
+						env := &Environment{Tasks: map[string]Task{
+							"test": {Dir: dir, Repeat: repeat},
+						}}
+						opts := RunnerOptions{DryRun: true}
+						writePath := filepath.Join(dir, "ignored.log")
+						if sharded {
+							opts.IgnorePath = sharedPath
+							writePath = sharedPath
+						}
+						runner, err := NewRunner(env, "test", opts)
+						if err != nil {
+							t.Fatal(err)
+						}
+						candidates := []Candidate{{Key: "shared"}, {Key: "common"}}
+						if withLocal {
+							candidates = append(candidates, Candidate{Key: "local"})
+						}
+						candidates = append(candidates, Candidate{Key: "new"})
+						selected := SelectCandidate(candidates, runner.ignoredList)
+						if selected == nil || selected.Key != "new" {
+							t.Fatalf("selected candidate = %v, want new (local log exists: %t)", selected, withLocal)
+						}
+						if runner.ignoredList.path != writePath {
+							t.Errorf("write path = %q, want %q", runner.ignoredList.path, writePath)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestNewRunnerUsesExplicitIgnorePath(t *testing.T) {
 	tmpDir := t.TempDir()
 	taskDir := filepath.Join(tmpDir, "test-task")

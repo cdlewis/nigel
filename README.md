@@ -184,7 +184,7 @@ This is different from the `--time-limit` CLI flag which applies to the entire t
 
 ## Candidate Sources
 
-A candidate source is a command that outputs JSON - a list of things for Nigel to work through. Candidates are evaluated in order and re-generated between runs. Once a candidate has been processed, it won't be retried (tracked via `ignored.log` in your task directory, or `ignored.shared.log` for same-machine sharded runs - remove entries to retry them).
+A candidate source is a command that outputs JSON - a list of things for Nigel to work through. Candidates are evaluated in order and re-generated between runs. Once a candidate has been processed, it won't be retried. File-based ignore checks read both `ignored.log` and `ignored.shared.log` in your task directory, and also accept `shared.ignored.log`, whether or not sharding is enabled. New entries are written to `ignored.log`, or to the shared log for same-machine sharded runs. Remove a candidate from all ignore logs to retry it.
 
 Three output formats are supported:
 

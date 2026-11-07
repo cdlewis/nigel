@@ -287,7 +287,10 @@ func NewRunner(env *Environment, taskName string, opts RunnerOptions) (*Runner, 
 	var ignoredList *IgnoredList
 	var err error
 	if opts.IgnorePath != "" {
-		ignoredList, err = NewIgnoredListFromPath(opts.IgnorePath)
+		ignoredList, err = NewIgnoredListFromPath(opts.IgnorePath,
+			filepath.Join(task.Dir, "ignored.log"),
+			filepath.Join(task.Dir, "ignored.shared.log"),
+			filepath.Join(task.Dir, "shared.ignored.log"))
 	} else if task.IgnoreList != "" {
 		ignoredList, err = NewIgnoredListFromCommand(task.IgnoreList, task.Dir)
 	} else {
