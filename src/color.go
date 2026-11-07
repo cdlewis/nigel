@@ -133,7 +133,7 @@ func displayWidth(s string) int {
 }
 
 // StartupBanner creates the startup banner with cat ASCII art
-func StartupBanner(taskName, logPath, mode string) string {
+func StartupBanner(taskName, logPath, mode string, model ...string) string {
 	cat := []string{
 		"　　　　　   __",
 		"　　　　 ／フ   フ",
@@ -162,6 +162,9 @@ func StartupBanner(taskName, logPath, mode string) string {
 		4: "Task: " + taskName,
 		5: "Logs: " + logPath,
 		6: "Mode: " + mode,
+	}
+	if len(model) > 0 && model[0] != "" {
+		labels[7] = "Model: " + model[0]
 	}
 
 	// Remove logs line if no path provided

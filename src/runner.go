@@ -438,7 +438,11 @@ func (r *Runner) Run() error {
 			logPath = rel
 		}
 	}
-	fmt.Print(StartupBanner(r.task.Name, logPath, r.modeString()))
+	model := ""
+	if _, ok := r.backend.(*CodexBackend); ok {
+		model = codexModelDisplay()
+	}
+	fmt.Print(StartupBanner(r.task.Name, logPath, r.modeString(), model))
 
 	startTime := time.Now()
 	iteration := 0
